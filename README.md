@@ -1,6 +1,6 @@
 # Tricorder Data Analysis — Home Assistant
 
-**Inspired by science fiction. Built for scientific discovery.**
+**Inspired by science fiction. Built for scientific discovery. Because “I wonder what that is?” should have a button.***
 
 An open-source Home Assistant companion for collecting, visualizing, and exploring sensor data from network-connected instruments. It began with the TR-460 science tricorder, but you **don't need a tricorder or even to know what one is to use the ideas and tools here.**
 
@@ -64,8 +64,6 @@ Original project code is intended for release under the **GNU General Public Lic
 
 ## Help shape it
 If you're using a different tricorder, a student-built sensor package, or an experimental instrument, testing and issue reports are welcome. Share the sensor types and data fields you needed to adapt, **not** private webhook links or real personal location data.
-
-*Because “I wonder what that is?” should have a button.*
 
 <img width="1902" height="1076" alt="image" src="https://github.com/user-attachments/assets/c4ae2d9b-9006-4ae8-9795-8406c501189b" />
 <img width="725" height="872" alt="image" src="https://github.com/user-attachments/assets/77bfcb89-743f-494d-8082-7a6ab8e54082" />
