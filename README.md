@@ -23,7 +23,7 @@ You can adapt the existing dashboard and data mappings for a tricorder, classroo
     The platform can also support astronomy and astrophysics projects, particularly experimental instrumentation and STEM education. Potential   applications include observatory environmental monitoring, telescope and instrument diagnostics, radio astronomy telemetry, and observation    archiving.
     With suitable sensors and adaptations, it could also support sky brightness measurements and astronomical spectroscopy.
     While not intended to replace specialized astronomical analysis software, it provides an accessible foundation for collecting, organizing,   and exploring data from custom-built astronomical instruments.
-- **Tricorder builders:** Connect TR-460, MyCorder, Next Gen, or another design by matching the supported telemetry format.
+- **Tricorder builders:** Connect TR-460, MyCorder, Next Gen, or another designs by matching the supported telemetry format.
 - **STEM classrooms and science clubs:** Build instruments, collect measurements, and compare experimental runs.
 - **Makers and open-source hardware developers:** Give homemade sensor packages a Home Assistant interface and mission archive.
 - **Citizen-science and environmental projects:** Organize readings from compatible field or stationary sensors.
