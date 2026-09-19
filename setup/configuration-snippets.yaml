@@ -1,0 +1,32 @@
+# MERGE these settings into your existing /config/configuration.yaml.
+# Do not replace your existing homeassistant:, shell_command:, or command_line: sections.
+# Put the seven supplied YAML packages in /config/packages/.
+
+homeassistant:
+  allowlist_external_dirs:
+    - /config/tricorder
+  packages: !include_dir_named packages
+
+shell_command:
+  tricorder_archive_mission: >-
+    python3 /config/tricorder/archive_manager.py archive "{{ states('input_text.tric_archive_mission_id') }}"
+  tricorder_restore_mission: >-
+    python3 /config/tricorder/archive_manager.py restore "{{ mission_id }}"
+  tricorder_delete_mission: >-
+    python3 /config/tricorder/archive_manager.py delete "{{ mission_id }}"
+
+# Also MERGE this entry into any existing command_line: list, if present.
+command_line:
+  - sensor:
+      name: Tricorder Archived Missions
+      unique_id: tricorder_archived_missions
+      command: >-
+        python3 /config/tricorder/tricorder_archive_reader.py archived
+      value_template: "{{ value_json.count | int(0) }}"
+      json_attributes:
+        - results
+      scan_interval: 30
+
+# Set up HA's File integration to provide notify.file, writing one JSON
+# record per line to /config/tricorder/tricorder_uploads.jsonl.
+# See docs/INSTALLATION.md and docs/SECURITY.md.

@@ -1,0 +1,792 @@
+# COPY into automations.yaml after replacing the webhook_id. Do not commit your live webhook.
+# The obsolete InfluxDB writes were removed; the JSONL File notifier is retained.
+- id: tricorder_upload_receiver_example
+  alias: Tricorder Upload Receiver
+  description: Receives local JSON uploads from Tricorder.
+  triggers:
+  - trigger: webhook
+    webhook_id: REPLACE_WITH_PRIVATE_RANDOM_WEBHOOK_ID
+    allowed_methods:
+    - POST
+    local_only: true
+  conditions: []
+  actions:
+  - action: notify.send_message
+    target:
+      entity_id: notify.file
+    data:
+      message: '{{ trigger.json | to_json }}'
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: "{{ trigger.json.get('record_type', '') in\n   ['scan_summary', 'radiation_scan']\
+          \ }}\n"
+      sequence:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.radiation_cpm
+        data:
+          value: '{{ trigger.json.get(''cpm'', 0) | float(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.radiation_dose
+        data:
+          value: '{{ trigger.json.get(''dose_usvh'', 0) | float(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.radiation_pulses
+        data:
+          value: '{{ trigger.json.get(''pulses'', 0) | int(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.radiation_duration
+        data:
+          value: '{{ trigger.json.get(''duration_seconds'', 0) | float(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.radiation_record_id
+        data:
+          value: "{{ trigger.json.get(\n     'id',\n     trigger.json.get('radiation_record_id', 0)\n\
+            \   ) | int(0) }}\n"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.radiation_scan_time
+        data:
+          datetime: "{{ trigger.json.get('time', '2000-01-01T00:00:00')\n   | replace('T', ' ') }}\n"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.radiation_scan_status
+        data:
+          value: "{{ trigger.json.get(\n     'scan_status',\n     trigger.json.get('status', 'unknown')\n\
+            \   ) }}\n"
+      - if:
+        - condition: template
+          value_template: '{{ trigger.json.get(''elapsed_seconds'') is not none }}
+
+            '
+        then:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_radiation_elapsed
+          data:
+            value: '{{ trigger.json.get(''elapsed_seconds'') | float(0) }}'
+        else:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_radiation_elapsed
+          data:
+            value: -1
+    - conditions:
+      - condition: template
+        value_template: '{{ trigger.json.get(''record_type'', '''') == ''atmosphere_scan'' }}
+
+          '
+      sequence:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_temperature
+        data:
+          value: '{{ ((trigger.json.get(''temperature_c'', 0) | float(0)) * 1.8) + 32 }}
+
+            '
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_humidity
+        data:
+          value: '{{ trigger.json.get(''humidity_percent'', 0) | float(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_pressure
+        data:
+          value: '{{ (trigger.json.get(''pressure_pa'', 0) | float(0)) / 100 }}
+
+            '
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_altitude
+        data:
+          value: '{{ trigger.json.get(''altitude_m'', 0) | float(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_lux
+        data:
+          value: '{{ trigger.json.get(''lux'', 0) | float(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_proximity
+        data:
+          value: '{{ trigger.json.get(''proximity'', 0) | int(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_eco2
+        data:
+          value: '{{ trigger.json.get(''eco2_ppm'', 0) | int(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_tvoc
+        data:
+          value: '{{ trigger.json.get(''tvoc_ppb'', 0) | int(0) }}'
+      - if:
+        - condition: template
+          value_template: '{{ trigger.json.get(''handheld_linked'', false) | bool }}
+
+            '
+        then:
+        - action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.tric_handheld_linked
+        else:
+        - action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.tric_handheld_linked
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.tric_scan_time
+        data:
+          datetime: "{{ trigger.json.get('time', '2000-01-01T00:00:00')\n   | replace('T', ' ') }}\n"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.tric_atmosphere_time
+        data:
+          datetime: "{{ trigger.json.get('time', '2000-01-01T00:00:00')\n   | replace('T', ' ') }}\n"
+      - if:
+        - condition: template
+          value_template: '{{ trigger.json.get(''elapsed_seconds'') is not none }}
+
+            '
+        then:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_atmosphere_elapsed
+          data:
+            value: '{{ trigger.json.get(''elapsed_seconds'') | float(0) }}'
+        else:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_atmosphere_elapsed
+          data:
+            value: -1
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.tric_scan_type
+        data:
+          value: Atmosphere
+    - conditions:
+      - condition: template
+        value_template: '{{ trigger.json.get(''record_type'', '''') == ''orientation_scan'' }}
+
+          '
+      sequence:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_heading
+        data:
+          value: '{{ trigger.json.get(''heading_deg'', 0) | float(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_magnetic_field
+        data:
+          value: '{{ trigger.json.get(''magnetic_field_ut'', 0) | float(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_accel_x
+        data:
+          value: '{{ trigger.json.get(''accel_x'', 0) | float(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_accel_y
+        data:
+          value: '{{ trigger.json.get(''accel_y'', 0) | float(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_accel_z
+        data:
+          value: '{{ trigger.json.get(''accel_z'', 0) | float(0) }}'
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.tric_scan_time
+        data:
+          datetime: "{{ trigger.json.get('time', '2000-01-01T00:00:00')\n   | replace('T', ' ') }}\n"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.tric_orientation_time
+        data:
+          datetime: "{{ trigger.json.get('time', '2000-01-01T00:00:00')\n   | replace('T', ' ') }}\n"
+      - if:
+        - condition: template
+          value_template: '{{ trigger.json.get(''elapsed_seconds'') is not none }}
+
+            '
+        then:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_orientation_elapsed
+          data:
+            value: '{{ trigger.json.get(''elapsed_seconds'') | float(0) }}'
+        else:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_orientation_elapsed
+          data:
+            value: -1
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.tric_scan_type
+        data:
+          value: Orientation
+    - conditions:
+      - condition: template
+        value_template: '{{ trigger.json.get(''record_type'', '''') == ''audio_scan'' }}
+
+          '
+      sequence:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_audio_relative_db
+        data:
+          value: '{{ trigger.json.get(''relative_db'', 0) | float(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_audio_peak_db
+        data:
+          value: '{{ trigger.json.get(''peak_db'', 0) | float(0) }}'
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.tric_scan_time
+        data:
+          datetime: "{{ trigger.json.get('time', '2000-01-01T00:00:00')\n   | replace('T', ' ') }}\n"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.tric_audio_time
+        data:
+          datetime: "{{ trigger.json.get('time', '2000-01-01T00:00:00')\n   | replace('T', ' ') }}\n"
+      - if:
+        - condition: template
+          value_template: '{{ trigger.json.get(''elapsed_seconds'') is not none }}
+
+            '
+        then:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_audio_elapsed
+          data:
+            value: '{{ trigger.json.get(''elapsed_seconds'') | float(0) }}'
+        else:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_audio_elapsed
+          data:
+            value: -1
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.tric_scan_type
+        data:
+          value: Audio
+    - conditions:
+      - condition: template
+        value_template: '{{ trigger.json.get(''record_type'', '''') == ''magnetic_scan'' }}
+
+          '
+      sequence:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_magnetic_field
+        data:
+          value: '{{ trigger.json.get(''magnetic_field_ut'', 0) | float(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_heading
+        data:
+          value: '{{ trigger.json.get(''heading_deg'', 0) | float(0) }}'
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.tric_scan_time
+        data:
+          datetime: "{{ trigger.json.get('time', '2000-01-01T00:00:00')\n   | replace('T', ' ') }}\n"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.tric_magnetic_time
+        data:
+          datetime: "{{ trigger.json.get('time', '2000-01-01T00:00:00')\n   | replace('T', ' ') }}\n"
+      - if:
+        - condition: template
+          value_template: '{{ trigger.json.get(''elapsed_seconds'') is not none }}
+
+            '
+        then:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_magnetic_elapsed
+          data:
+            value: '{{ trigger.json.get(''elapsed_seconds'') | float(0) }}'
+        else:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_magnetic_elapsed
+          data:
+            value: -1
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.tric_scan_type
+        data:
+          value: Magnetic
+    - conditions:
+      - condition: template
+        value_template: '{{ trigger.json.get(''record_type'', '''') == ''color_scan'' }}
+
+          '
+      sequence:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_color_red
+        data:
+          value: '{{ trigger.json.get(''red'', 0) | int(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_color_green
+        data:
+          value: '{{ trigger.json.get(''green'', 0) | int(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_color_blue
+        data:
+          value: '{{ trigger.json.get(''blue'', 0) | int(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_color_clear
+        data:
+          value: '{{ trigger.json.get(''clear'', 0) | int(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_lux
+        data:
+          value: '{{ trigger.json.get(''lux'', 0) | float(0) }}'
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_proximity
+        data:
+          value: '{{ trigger.json.get(''proximity'', 0) | int(0) }}'
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.tric_scan_time
+        data:
+          datetime: "{{ trigger.json.get('time', '2000-01-01T00:00:00')\n   | replace('T', ' ') }}\n"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.tric_color_time
+        data:
+          datetime: "{{ trigger.json.get('time', '2000-01-01T00:00:00')\n   | replace('T', ' ') }}\n"
+      - if:
+        - condition: template
+          value_template: '{{ trigger.json.get(''elapsed_seconds'') is not none }}
+
+            '
+        then:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_color_elapsed
+          data:
+            value: '{{ trigger.json.get(''elapsed_seconds'') | float(0) }}'
+        else:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_color_elapsed
+          data:
+            value: -1
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.tric_scan_type
+        data:
+          value: Color
+    - conditions:
+      - condition: template
+        value_template: '{{ trigger.json.get(''record_type'', '''') == ''thermal_scan'' }}
+
+          '
+      sequence:
+      - if:
+        - condition: template
+          value_template: "{% set avail = trigger.json.get(\n     'available',\n     trigger.json.get('thermal_available',\
+            \ none)\n   ) %}\n{{ (avail | bool) if avail is not none else\n   (trigger.json.get(\n   \
+            \   'center_c',\n      trigger.json.get('thermal_center_c', none)\n    ) is not none) }}\n"
+        then:
+        - action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.tric_thermal_available
+        else:
+        - action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.tric_thermal_available
+      - if:
+        - condition: template
+          value_template: "{{ trigger.json.get(\n     'center_c',\n     trigger.json.get('thermal_center_c',\
+            \ none)\n   ) is not none }}\n"
+        then:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_thermal_center
+          data:
+            value: "{% set c = trigger.json.get(\n     'center_c',\n     trigger.json.get('thermal_center_c',\
+              \ 0)\n   ) | float(0) %}\n{{ (c * 1.8) + 32 }}\n"
+      - if:
+        - condition: template
+          value_template: "{{ trigger.json.get(\n     'min_c',\n     trigger.json.get('thermal_min_c',\
+            \ none)\n   ) is not none }}\n"
+        then:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_thermal_min
+          data:
+            value: "{% set c = trigger.json.get(\n     'min_c',\n     trigger.json.get('thermal_min_c',\
+              \ 0)\n   ) | float(0) %}\n{{ (c * 1.8) + 32 }}\n"
+      - if:
+        - condition: template
+          value_template: "{{ trigger.json.get(\n     'max_c',\n     trigger.json.get('thermal_max_c',\
+            \ none)\n   ) is not none }}\n"
+        then:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_thermal_max
+          data:
+            value: "{% set c = trigger.json.get(\n     'max_c',\n     trigger.json.get('thermal_max_c',\
+              \ 0)\n   ) | float(0) %}\n{{ (c * 1.8) + 32 }}\n"
+      - if:
+        - condition: template
+          value_template: '{{ ''T'' in trigger.json.get(''time'', '''') }}
+
+            '
+        then:
+        - action: input_datetime.set_datetime
+          target:
+            entity_id: input_datetime.tric_thermal_time
+          data:
+            datetime: '{{ trigger.json.get(''time'') | replace(''T'', '' '') }}
+
+              '
+      - if:
+        - condition: template
+          value_template: '{{ trigger.json.get(''elapsed_seconds'') is not none }}
+
+            '
+        then:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_thermal_elapsed
+          data:
+            value: '{{ trigger.json.get(''elapsed_seconds'') | float(0) }}'
+        else:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_thermal_elapsed
+          data:
+            value: -1
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.tric_scan_type
+        data:
+          value: Thermal
+    - conditions:
+      - condition: template
+        value_template: '{{ trigger.json.get(''record_type'', '''') == ''distance_scan'' }}
+
+          '
+      sequence:
+      - if:
+        - condition: template
+          value_template: "{% set avail = trigger.json.get(\n     'available',\n     trigger.json.get('distance_available',\
+            \ none)\n   ) %}\n{{ (avail | bool) if avail is not none else\n   (trigger.json.get(\n   \
+            \   'distance_m',\n      trigger.json.get('lidar_distance_m', none)\n    ) is not none) }}\n"
+        then:
+        - action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.tric_distance_available
+        else:
+        - action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.tric_distance_available
+      - if:
+        - condition: template
+          value_template: "{{ trigger.json.get(\n     'distance_m',\n     trigger.json.get('lidar_distance_m',\
+            \ none)\n   ) is not none }}\n"
+        then:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_distance
+          data:
+            value: "{{ trigger.json.get(\n     'distance_m',\n     trigger.json.get('lidar_distance_m',\
+              \ 0)\n   ) | float(0) }}\n"
+      - if:
+        - condition: template
+          value_template: '{{ ''T'' in trigger.json.get(''time'', '''') }}
+
+            '
+        then:
+        - action: input_datetime.set_datetime
+          target:
+            entity_id: input_datetime.tric_distance_time
+          data:
+            datetime: '{{ trigger.json.get(''time'') | replace(''T'', '' '') }}
+
+              '
+      - if:
+        - condition: template
+          value_template: '{{ trigger.json.get(''elapsed_seconds'') is not none }}
+
+            '
+        then:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_distance_elapsed
+          data:
+            value: '{{ trigger.json.get(''elapsed_seconds'') | float(0) }}'
+        else:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_distance_elapsed
+          data:
+            value: -1
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.tric_scan_type
+        data:
+          value: Distance
+    - conditions:
+      - condition: template
+        value_template: '{{ trigger.json.get(''record_type'', '''') == ''uv_scan'' }}
+
+          '
+      sequence:
+      - if:
+        - condition: template
+          value_template: "{% set avail = trigger.json.get(\n     'available',\n     trigger.json.get('uv_available',\
+            \ none)\n   ) %}\n{{ (avail | bool) if avail is not none else\n   (trigger.json.get('uv_index',\
+            \ none) is not none\n    or trigger.json.get('uv_raw', none) is not none) }}\n"
+        then:
+        - action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.tric_uv_available
+        else:
+        - action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.tric_uv_available
+      - if:
+        - condition: template
+          value_template: '{{ trigger.json.get(''uv_raw'', none) is not none }}
+
+            '
+        then:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_uv_raw
+          data:
+            value: '{{ trigger.json.get(''uv_raw'') | float(0) }}'
+      - if:
+        - condition: template
+          value_template: '{{ trigger.json.get(''uv_index'', none) is not none }}
+
+            '
+        then:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_uv_index
+          data:
+            value: '{{ trigger.json.get(''uv_index'') | float(0) }}'
+      - if:
+        - condition: template
+          value_template: '{{ ''T'' in trigger.json.get(''time'', '''') }}
+
+            '
+        then:
+        - action: input_datetime.set_datetime
+          target:
+            entity_id: input_datetime.tric_uv_time
+          data:
+            datetime: '{{ trigger.json.get(''time'') | replace(''T'', '' '') }}
+
+              '
+      - if:
+        - condition: template
+          value_template: '{{ trigger.json.get(''elapsed_seconds'') is not none }}
+
+            '
+        then:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_uv_elapsed
+          data:
+            value: '{{ trigger.json.get(''elapsed_seconds'') | float(0) }}'
+        else:
+        - action: input_number.set_value
+          target:
+            entity_id: input_number.tric_uv_elapsed
+          data:
+            value: -1
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.tric_scan_type
+        data:
+          value: UV
+  - if:
+    - condition: template
+      value_template: '{{ trigger.json.get(''record_type'', '''') == ''location_update'' }}
+
+        '
+    then:
+    - action: input_number.set_value
+      target:
+        entity_id: input_number.tric_latitude
+      data:
+        value: '{{ trigger.json.get(''latitude'', 0) | float(0) }}'
+    - action: input_number.set_value
+      target:
+        entity_id: input_number.tric_longitude
+      data:
+        value: '{{ trigger.json.get(''longitude'', 0) | float(0) }}'
+    - action: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.tric_location_available
+    - if:
+      - condition: template
+        value_template: '{{ ''T'' in trigger.json.get(''time'', '''') }}
+
+          '
+      then:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.tric_location_time
+        data:
+          datetime: '{{ trigger.json.get(''time'') | replace(''T'', '' '') }}
+
+            '
+    - if:
+      - condition: template
+        value_template: '{{ trigger.json.get(''elapsed_seconds'') is not none }}
+
+          '
+      then:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_location_elapsed
+        data:
+          value: '{{ trigger.json.get(''elapsed_seconds'') | float(0) }}'
+      else:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_location_elapsed
+        data:
+          value: -1
+  - if:
+    - condition: template
+      value_template: '{{ trigger.json.get(''mission_file'', '''') != '''' }}
+
+        '
+    then:
+    - if:
+      - condition: template
+        value_template: '{{ trigger.json.get(''mission_code'') is not none }}
+
+          '
+      then:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.tric_mission_code
+        data:
+          value: '{{ trigger.json.get(''mission_code'') }}'
+    - if:
+      - condition: template
+        value_template: '{{ trigger.json.get(''mission_name'') is not none }}
+
+          '
+      then:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.tric_mission_name
+        data:
+          value: '{{ trigger.json.get(''mission_name'') }}'
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.tric_mission_last_event
+      data:
+        value: '{{ trigger.json.get(''record_type'', ''unknown'') }}'
+    - if:
+      - condition: template
+        value_template: '{{ trigger.json.get(''elapsed_seconds'') is not none }}
+
+          '
+      then:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.tric_mission_elapsed
+        data:
+          value: '{{ trigger.json.get(''elapsed_seconds'') | float(0) }}'
+    - if:
+      - condition: template
+        value_template: '{{ ''T'' in trigger.json.get(''time'', '''') }}
+
+          '
+      then:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.tric_mission_event_time
+        data:
+          datetime: '{{ trigger.json.get(''time'') | replace(''T'', '' '') }}
+
+            '
+    - if:
+      - condition: template
+        value_template: '{{ trigger.json.get(''status'') is not none }}
+
+          '
+      then:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.tric_mission_status
+        data:
+          value: '{{ trigger.json.get(''status'') }}'
+    - choose:
+      - conditions:
+        - condition: template
+          value_template: '{{ trigger.json.get(''record_type'', '''') == ''mission_start'' }}
+
+            '
+        sequence:
+        - if:
+          - condition: template
+            value_template: '{{ ''T'' in trigger.json.get(''time'', '''') }}
+
+              '
+          then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.tric_mission_start_time
+            data:
+              datetime: '{{ trigger.json.get(''time'') | replace(''T'', '' '') }}
+
+                '
+        - action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.tric_mission_active
+      - conditions:
+        - condition: template
+          value_template: '{{ trigger.json.get(''record_type'', '''') == ''mission_end'' }}
+
+            '
+        sequence:
+        - if:
+          - condition: template
+            value_template: '{{ ''T'' in trigger.json.get(''time'', '''') }}
+
+              '
+          then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.tric_mission_end_time
+            data:
+              datetime: '{{ trigger.json.get(''time'') | replace(''T'', '' '') }}
+
+                '
+        - action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.tric_mission_active
+  mode: queued
+  max: 20

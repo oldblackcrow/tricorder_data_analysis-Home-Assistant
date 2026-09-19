@@ -1,0 +1,77 @@
+# ============================================================
+# TRICORDER RADIATION ANALYSIS
+# Reads the JSONL upload archive for previous-scan comparison,
+# counting statistics, integrated dose, mission context, and
+# recent radiation trend.
+# ============================================================
+
+command_line:
+
+  - sensor:
+      name: Tricorder Radiation Analysis
+      unique_id: tricorder_radiation_analysis
+      command: >-
+        python3 /config/tricorder/tricorder_radiation_analysis.py
+      command_timeout: 10
+      scan_interval: 30
+
+      value_template: >-
+        {{ value_json.get('state', 0) }}
+
+      unit_of_measurement: "CPM"
+
+      json_attributes:
+        - available
+        - scan_time
+        - record_id
+        - cpm
+        - dose_usvh
+        - pulses
+        - duration_seconds
+        - previous_time
+        - previous_cpm
+        - previous_dose_usvh
+        - delta_cpm
+        - delta_cpm_pct
+        - delta_dose_usvh
+        - delta_dose_pct
+        - sigma_cpm
+        - relative_sigma_pct
+        - cpm_low_1sigma
+        - cpm_high_1sigma
+        - count_precision
+        - integrated_dose_usv
+        - scope
+        - mission_code
+        - mission_name
+        - mission_elapsed
+        - latitude
+        - longitude
+        - recent
+        - error
+
+
+automation:
+
+  - id: tricorder_refresh_radiation_analysis
+    alias: Tricorder - Refresh Radiation Analysis
+    description: >
+      Refreshes radiation analysis immediately when a new radiation scan arrives.
+
+    triggers:
+      - trigger: state
+        entity_id: sensor.tricorder_radiation_scan_time
+
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ trigger.to_state is not none
+             and trigger.to_state.state
+                 not in ['', 'unknown', 'unavailable'] }}
+
+    actions:
+      - action: homeassistant.update_entity
+        target:
+          entity_id: sensor.tricorder_radiation_analysis
+
+    mode: restart

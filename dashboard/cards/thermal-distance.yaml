@@ -1,0 +1,355 @@
+type: custom:html-template-card
+ignore_line_breaks: true
+entities:
+- input_boolean.tric_thermal_available
+- input_number.tric_thermal_center
+- input_number.tric_thermal_min
+- input_number.tric_thermal_max
+- input_datetime.tric_thermal_time
+- input_boolean.tric_distance_available
+- input_number.tric_distance
+- input_datetime.tric_distance_time
+- sensor.tricorder_mission_scans
+content: |
+  {% set helper_center = states('input_number.tric_thermal_center') | float(0) %} {% set helper_min = states('input_number.tric_thermal_min') | float(0) %} {% set helper_max = states('input_number.tric_thermal_max') | float(0) %} {% set helper_distance = states('input_number.tric_distance') | float(0) %}
+  {% set thermal_raw_time = states('input_datetime.tric_thermal_time') %} {% set distance_raw_time = states('input_datetime.tric_distance_time') %} {% set thermal_time = as_datetime(thermal_raw_time) %} {% set distance_time = as_datetime(distance_raw_time) %} {% set thermal_end_ts = as_timestamp(thermal_time) if thermal_time else none %} {% set distance_end_ts = as_timestamp(distance_time) if distance_time else none %}
+  {% set scan_results = state_attr('sensor.tricorder_mission_scans', 'results') or [] %} {% set scan_series = [] %} {% if scan_results and scan_results[0].get('series') %}
+    {% set scan_series = scan_results[0]['series'] %}
+  {% endif %}
+  {% set thermal = namespace(columns=[], rows=[]) %} {% set distance = namespace(columns=[], rows=[]) %} {% for series in scan_series %}
+    {% if series.get('name', '') == 'tricorder_thermal' %}
+      {% set thermal.columns = series.get('columns', []) %}
+      {% set thermal.rows = series.get('values', []) %}
+    {% elif series.get('name', '') == 'tricorder_distance' %}
+      {% set distance.columns = series.get('columns', []) %}
+      {% set distance.rows = series.get('values', []) %}
+    {% endif %}
+  {% endfor %}
+  {% macro latest_cluster(columns, rows, helper_ts, window=14) %}
+    {% set result = namespace(rows=[]) %}
+    {% set candidates = namespace(rows=[]) %}
+
+    {% if helper_ts is not none and 'time' in columns %}
+      {% set ti = columns.index('time') %}
+      {% for row in rows %}
+        {% set dt = as_datetime(row[ti]) %}
+        {% if dt %}
+          {% set ts = as_timestamp(dt) %}
+          {% if ts >= helper_ts - window and ts <= helper_ts + 2 %}
+            {% set candidates.rows = candidates.rows + [row] %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+
+    {% if candidates.rows and 'time' in columns %}
+      {% set ti = columns.index('time') %}
+      {% set c = namespace(rows=[], active=true, last_ts=none) %}
+      {% for row in candidates.rows | reverse %}
+        {% if c.active %}
+          {% set dt = as_datetime(row[ti]) %}
+          {% if dt %}
+            {% set ts = as_timestamp(dt) %}
+            {% if c.last_ts is none or (c.last_ts - ts) <= 2.5 %}
+              {% set c.rows = [row] + c.rows %}
+              {% set c.last_ts = ts %}
+            {% else %}
+              {% set c.active = false %}
+            {% endif %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+      {% set result.rows = c.rows %}
+    {% endif %}
+
+    {% if not result.rows and rows and 'time' in columns %}
+      {% set ti = columns.index('time') %}
+      {% set f = namespace(rows=[], active=true, last_ts=none) %}
+      {% for row in rows | reverse %}
+        {% if f.active %}
+          {% set dt = as_datetime(row[ti]) %}
+          {% if dt %}
+            {% set ts = as_timestamp(dt) %}
+            {% if f.last_ts is none or (f.last_ts - ts) <= 2.5 %}
+              {% set f.rows = [row] + f.rows %}
+              {% set f.last_ts = ts %}
+            {% else %}
+              {% set f.active = false %}
+            {% endif %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+      {% set result.rows = f.rows %}
+    {% endif %}
+
+    {{ result.rows | to_json }}
+  {% endmacro %}
+  {% set thermal_rows = latest_cluster(thermal.columns, thermal.rows, thermal_end_ts, 18) | from_json %} {% set distance_rows = latest_cluster(distance.columns, distance.rows, distance_end_ts, 14) | from_json %}
+  {% set main = namespace(
+       center=helper_center,
+       min=helper_min,
+       max=helper_max,
+       distance=helper_distance,
+       thermal_available=is_state('input_boolean.tric_thermal_available','on'),
+       distance_available=is_state('input_boolean.tric_distance_available','on')
+     ) %}
+
+  {% if thermal_rows %}
+    {% set row = thermal_rows[-1] %}
+    {% if 'center_f' in thermal.columns and row[thermal.columns.index('center_f')] is not none %}
+      {% set main.center = row[thermal.columns.index('center_f')] | float(main.center) %}
+    {% endif %}
+    {% if 'min_f' in thermal.columns and row[thermal.columns.index('min_f')] is not none %}
+      {% set main.min = row[thermal.columns.index('min_f')] | float(main.min) %}
+    {% endif %}
+    {% if 'max_f' in thermal.columns and row[thermal.columns.index('max_f')] is not none %}
+      {% set main.max = row[thermal.columns.index('max_f')] | float(main.max) %}
+    {% endif %}
+    {% set main.thermal_available = true %}
+  {% endif %}
+  {% if distance_rows %}
+    {% set row = distance_rows[-1] %}
+    {% if 'distance_m' in distance.columns and row[distance.columns.index('distance_m')] is not none %}
+      {% set main.distance = row[distance.columns.index('distance_m')] | float(main.distance) %}
+      {% set main.distance_available = true %}
+    {% elif 'available' in distance.columns %}
+      {% set main.distance_available = row[distance.columns.index('available')] | bool %}
+    {% endif %}
+  {% endif %}
+  {% macro popup(series_name, columns, rows, field, label, unit, color, decimals=2) %}
+    {% set ns = namespace(points=[], values=[], first_ts=none, last_ts=none) %}
+
+    {% if rows and field in columns and 'time' in columns %}
+      {% set fi = columns.index(field) %}
+      {% set ti = columns.index('time') %}
+
+      {% for row in rows %}
+        {% if row[fi] is not none %}
+          {% set dt = as_datetime(row[ti]) %}
+          {% if dt %}
+            {% set ts = as_timestamp(dt) %}
+            {% if ns.first_ts is none %}{% set ns.first_ts = ts %}{% endif %}
+            {% set ns.last_ts = ts %}
+
+            {% set center_v = row[columns.index('center_f')] if 'center_f' in columns else none %}
+            {% set min_v = row[columns.index('min_f')] if 'min_f' in columns else none %}
+            {% set max_v = row[columns.index('max_f')] if 'max_f' in columns else none %}
+            {% set distance_v = row[columns.index('distance_m')] if 'distance_m' in columns else none %}
+            {% set mission_v = row[columns.index('elapsed_seconds')] if 'elapsed_seconds' in columns else none %}
+
+            {% set ns.values = ns.values + [row[fi] | float(0)] %}
+            {% set ns.points = ns.points + [{
+              'ts': ts,
+              'time': dt.strftime('%H:%M:%S'),
+              'value': row[fi] | float(0),
+              'center': center_v,
+              'min': min_v,
+              'max': max_v,
+              'distance': distance_v,
+              'mission': mission_v
+            }] %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+
+    {% set count = ns.points | count %}
+
+    {% if count %}
+      {% set minval = ns.values | min %}
+      {% set maxval = ns.values | max %}
+      {% set avgval = (ns.values | sum) / count %}
+      {% set span = (ns.last_ts - ns.first_ts) if count > 1 else 0 %}
+      {% set duration = ((span + 1) | round(0) | int) if count > 1 else 1 %}
+
+      {% set picks = namespace(mini=1, maxi=1, min_found=false, max_found=false) %}
+      {% set graph = namespace(coords=[]) %}
+
+      {% for p in ns.points %}
+        {% if not picks.min_found and p['value'] == minval %}
+          {% set picks.mini = loop.index %}
+          {% set picks.min_found = true %}
+        {% endif %}
+        {% if not picks.max_found and p['value'] == maxval %}
+          {% set picks.maxi = loop.index %}
+          {% set picks.max_found = true %}
+        {% endif %}
+
+        {% set x = 150 if span <= 0 else 14 + (((p['ts'] - ns.first_ts) / span) * 272) %}
+        {% set y = 70 if maxval == minval else 126 - (((p['value'] - minval) / (maxval - minval)) * 106) %}
+        {% set graph.coords = graph.coords + [{
+          'x': x | round(1),
+          'y': y | round(1),
+          'left': ((x / 300) * 100) | round(3),
+          'top': ((y / 150) * 100) | round(3),
+          'offset': (p['ts'] - ns.first_ts) | round(1),
+          'index': loop.index,
+          'p': p
+        }] %}
+      {% endfor %}
+
+      {% set recorded_dt = as_datetime(rows[-1][columns.index('time')]) %}
+      {% set recorded = recorded_dt.strftime('%m/%d/%Y %H:%M:%S') if recorded_dt else '' %}
+
+      <div class="tdp">
+        <style>
+          .tdp{background:#000;color:#fff;padding:16px;font-family:Antonio,Arial Narrow,sans-serif;box-sizing:border-box}
+          .tdp *{box-sizing:border-box}.tr{position:absolute;opacity:0;pointer-events:none}.tc{cursor:pointer}.tc:hover{filter:brightness(1.12)}
+          .tsel{display:none}.tblank{display:block;text-align:center;color:#777;font-size:10px;font-weight:800;padding:16px 0}
+          .tbar{height:7px;background:{{ color }};border-radius:8px;margin-bottom:13px}.ttitle{text-align:center;font-size:22px;font-weight:900;letter-spacing:1px}
+          .tsub{text-align:center;color:{{ color }};font-size:11px;font-weight:800;letter-spacing:1px;margin:3px 0 14px}
+          .tsum{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}.ttile{background:#111;border-radius:11px;padding:8px;text-align:center}
+          .tk{font-size:8px;color:#777}.tv{font-size:15px;font-weight:900}.tu{font-size:8px;color:#aaa}
+          .tsw{background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:9px;margin-bottom:12px;min-height:55px}
+          .tsh{display:flex;justify-content:space-between;font-size:13px;color:#ccc;margin-bottom:7px}.tgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+          .tbox{background:#050505;border-radius:8px;padding:8px;text-align:center}.tgraph{background:#080808;border:1px solid #222;border-radius:14px;padding:10px}
+          .tgp{position:relative;width:100%;height:260px}.taxis{display:flex;justify-content:space-between;color:#aaa;font-size:14px;font-weight:800;margin-top:4px}
+          .tstamp{font-size:15px;color:#ddd}.trows{margin-top:12px;background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:8px}
+          .trh{font-size:9px;color:#888;font-weight:800;letter-spacing:1px;margin-bottom:4px}.trow{display:grid;grid-template-columns:72px 1fr;gap:8px;padding:7px 5px;border-top:1px solid #181818;font-size:11px}
+          .tlast{display:block;margin-top:10px;text-align:center;font-size:11px;color:#888}
+          {% for c in graph.coords %}
+            #{{ field }}-p{{ c['index'] }}:checked~.tsw .tblank{display:none}
+            #{{ field }}-p{{ c['index'] }}:checked~.tsw .s{{ c['index'] }}{display:block}
+            #{{ field }}-p{{ c['index'] }}:checked~.tgraph .d{{ c['index'] }}{stroke:#fff;stroke-width:4;filter:drop-shadow(0 0 4px {{ color }})}
+            #{{ field }}-p{{ c['index'] }}:checked~.trows .r{{ c['index'] }}{background:#171717;color:#fff}
+          {% endfor %}
+        </style>
+
+        {% for c in graph.coords %}
+          <input class="tr" type="radio" name="{{ field }}-p" id="{{ field }}-p{{ c['index'] }}">
+        {% endfor %}
+
+        <div class="tbar"></div>
+        <div class="ttitle">{{ label }}</div>
+        <div class="tsub">{{ duration }} SECOND SCAN</div>
+
+        <div class="tsum">
+          <label class="ttile tc" for="{{ field }}-p{{ picks.mini }}"><div class="tk">MIN</div><div class="tv">{{ minval | round(decimals) }} <span class="tu">{{ unit }}</span></div></label>
+          <div class="ttile"><div class="tk">AVG</div><div class="tv">{{ avgval | round(decimals) }} <span class="tu">{{ unit }}</span></div></div>
+          <label class="ttile tc" for="{{ field }}-p{{ picks.maxi }}"><div class="tk">MAX</div><div class="tv">{{ maxval | round(decimals) }} <span class="tu">{{ unit }}</span></div></label>
+          <div class="ttile"><div class="tk">SAMPLES</div><div class="tv">{{ count }}</div></div>
+        </div>
+
+        <div class="tsw">
+          <div class="tblank">TAP A POINT OR SAMPLE TO INSPECT</div>
+          {% for c in graph.coords %}
+            <div class="tsel s{{ c['index'] }}">
+              <div class="tsh"><b style="color:{{ color }}">SAMPLE {{ c['index'] }}</b><span>{{ c['p']['time'] }} · +{{ c['offset'] }} s</span></div>
+
+              {% if series_name == 'thermal' %}
+                <div class="tgrid">
+                  <div class="tbox"><div class="tk">CENTER</div><div class="tv">{{ c['p']['center'] | round(3) if c['p']['center'] is not none else '--' }} <span class="tu">°F</span></div></div>
+                  <div class="tbox"><div class="tk">MIN</div><div class="tv">{{ c['p']['min'] | round(3) if c['p']['min'] is not none else '--' }} <span class="tu">°F</span></div></div>
+                  <div class="tbox"><div class="tk">MAX</div><div class="tv">{{ c['p']['max'] | round(3) if c['p']['max'] is not none else '--' }} <span class="tu">°F</span></div></div>
+                </div>
+              {% else %}
+                <div class="tbox"><div class="tk">DISTANCE</div><div class="tv">{{ c['p']['distance'] | round(3) if c['p']['distance'] is not none else '--' }} <span class="tu">m</span></div></div>
+              {% endif %}
+
+              <div class="tk" style="text-align:center;margin-top:6px">MISSION {% if c['p']['mission'] is not none %}{{ c['p']['mission'] | round(1) }} s{% else %}--{% endif %}</div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="tgraph">
+          <div class="tgp">
+            <svg viewBox="0 0 300 150" preserveAspectRatio="none" style="width:100%;height:260px;display:block;position:absolute;inset:0">
+              <line x1="14" y1="126" x2="286" y2="126" stroke="#333" stroke-width="1"/>
+              <line x1="14" y1="20" x2="14" y2="126" stroke="#333" stroke-width="1"/>
+              {% if count > 1 %}
+                <polyline points="{% for c in graph.coords %}{{ c['x'] }},{{ c['y'] }} {% endfor %}" fill="none" stroke="{{ color }}" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
+              {% endif %}
+              {% for c in graph.coords %}
+                <circle class="d{{ c['index'] }}" cx="{{ c['x'] }}" cy="{{ c['y'] }}" r="5" fill="{{ color }}"/>
+              {% endfor %}
+            </svg>
+            {% for c in graph.coords %}
+              <label class="tc" for="{{ field }}-p{{ c['index'] }}" style="position:absolute;left:{{ c['left'] }}%;top:{{ c['top'] }}%;width:30px;height:30px;transform:translate(-50%,-50%);border-radius:50%;z-index:3"></label>
+            {% endfor %}
+          </div>
+          <div class="taxis"><span>0 s</span><span class="tstamp">{{ recorded }}</span><span>{{ duration }} s</span></div>
+        </div>
+
+        <div class="trows">
+          <div class="trh">SAMPLE DETAIL</div>
+          {% for c in graph.coords %}
+            <label class="trow tc r{{ c['index'] }}" for="{{ field }}-p{{ c['index'] }}">
+              <span style="color:#aaa">{{ c['p']['time'] }}</span>
+              <span>{{ label }} {{ c['p']['value'] | round(3) }} {{ unit }}</span>
+            </label>
+          {% endfor %}
+        </div>
+
+        <label class="tlast tc" for="{{ field }}-p{{ count }}">LAST {{ ns.values[-1] | round(3) }} {{ unit }}</label>
+        <div class="tbar" style="margin-top:13px;margin-bottom:0"></div>
+      </div>
+
+    {% else %}
+      <div style="background:#000;color:#fff;padding:22px;font-family:Antonio,Arial Narrow,sans-serif;text-align:center">
+        <div style="font-size:20px;font-weight:900">{{ label }}</div>
+        <div style="color:#888;margin-top:12px">No time-series samples found for this scan.</div>
+      </div>
+    {% endif %}
+  {% endmacro %}
+  {% set center_popup = popup('thermal',thermal.columns,thermal_rows,'center_f','THERMAL CENTER','°F','#f59e0b',1) %} {% set min_popup = popup('thermal',thermal.columns,thermal_rows,'min_f','THERMAL MIN','°F','#3b82f6',1) %} {% set max_popup = popup('thermal',thermal.columns,thermal_rows,'max_f','THERMAL MAX','°F','#ef4444',1) %} {% set distance_popup = popup('distance',distance.columns,distance_rows,'distance_m','LIDAR DISTANCE','m','#22c55e',2) %}
+  <style>
+    .td-card{background:#000;border:0;border-radius:38px;padding:10px 18px;overflow:hidden;font-family:"Antonio","Arial Narrow",sans-serif;box-sizing:border-box}
+    .td-topline{height:7px;background:#f59e0b;margin:-5px -18px 10px}.td-bottomline{height:7px;background:#22c55e;margin:10px -18px -5px}
+    .td-title{color:#fff;text-align:center;font-size:18px;font-weight:800;letter-spacing:1px;margin:0 0 7px}
+    .td-row{display:grid;height:30px;margin:4px 0;cursor:pointer;user-select:none}.td-row:hover{filter:brightness(1.08)}
+    .td-row.left{grid-template-columns:52px 1fr 1.75fr}.td-row.right{grid-template-columns:1.75fr 1fr 52px}
+    .td-cap{color:#000;display:flex;align-items:center;justify-content:center}.leftcap{border-radius:15px 0 0 15px}.rightcap{border-radius:0 15px 15px 0}
+    .td-value{background:#000;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;white-space:nowrap}.unit{font-size:9px;font-weight:600;margin-left:3px}
+    .td-label{color:#000;display:flex;align-items:center;justify-content:center;text-align:center;font-size:9px;font-weight:800;padding:0 6px}
+    .round-right{border-radius:0 15px 15px 0}.round-left{border-radius:15px 0 0 15px}ha-icon{--mdc-icon-size:16px}
+  </style>
+  <div class="td-card">
+    <div class="td-topline"></div>
+    <div class="td-title">THERMAL / DISTANCE</div>
+
+    <div class="td-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"THERMAL CENTER SCAN",content:{{ center_popup | to_json }},initial_style:"normal"}}}}))'>
+      <div class="td-cap leftcap" style="background:#f59e0b"><ha-icon icon="mdi:crosshairs-gps"></ha-icon></div>
+      <div class="td-value">{{ main.center | round(1) }}<span class="unit">°F</span></div>
+      <div class="td-label round-right" style="background:#f59e0b">THERMAL CENTER</div>
+    </div>
+
+    <div class="td-row right"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"THERMAL MIN SCAN",content:{{ min_popup | to_json }},initial_style:"normal"}}}}))'>
+      <div class="td-label round-left" style="background:#3b82f6">THERMAL MIN</div>
+      <div class="td-value">{{ main.min | round(1) }}<span class="unit">°F</span></div>
+      <div class="td-cap rightcap" style="background:#3b82f6"><ha-icon icon="mdi:thermometer-low"></ha-icon></div>
+    </div>
+
+    <div class="td-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"THERMAL MAX SCAN",content:{{ max_popup | to_json }},initial_style:"normal"}}}}))'>
+      <div class="td-cap leftcap" style="background:#ef4444"><ha-icon icon="mdi:thermometer-high"></ha-icon></div>
+      <div class="td-value">{{ main.max | round(1) }}<span class="unit">°F</span></div>
+      <div class="td-label round-right" style="background:#ef4444">THERMAL MAX</div>
+    </div>
+
+    <div class="td-row right"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"LIDAR DISTANCE SCAN",content:{{ distance_popup | to_json }},initial_style:"normal"}}}}))'>
+      <div class="td-label round-left" style="background:#22c55e">LIDAR DISTANCE</div>
+      <div class="td-value">
+        {% if main.distance_available %}
+          {{ main.distance | round(2) }}<span class="unit">m</span>
+        {% else %}
+          OUT
+        {% endif %}
+      </div>
+      <div class="td-cap rightcap" style="background:#22c55e"><ha-icon icon="mdi:arrow-expand-horizontal"></ha-icon></div>
+    </div>
+
+    <div class="td-bottomline"></div>
+  </div>
+card_mod:
+  style: |
+    ha-card {
+      background:#29364c !important;
+      padding:2px !important;
+      border:none !important;
+      border-radius:40px !important;
+      box-shadow:none !important;
+      overflow:hidden !important;
+    }

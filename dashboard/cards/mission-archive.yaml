@@ -1,0 +1,1057 @@
+type: custom:html-template-card
+ignore_line_breaks: true
+entities:
+- sensor.tricorder_mission_catalog
+- sensor.tricorder_archived_missions
+- input_text.tric_archive_mission_id
+- sensor.tricorder_mission_events
+- sensor.tricorder_mission_scans
+- script.tricorder_archive_selected_mission
+- script.tricorder_restore_archived_mission
+- script.tricorder_delete_archived_mission
+content: |
+  {% set selected_mid = states('input_text.tric_archive_mission_id') %}
+
+  {# ======================================================== #} {# AVAILABLE MISSION CATALOG                                #} {# ======================================================== #}
+  {% set catalog_results =
+       state_attr('sensor.tricorder_mission_catalog', 'results') or [] %}
+
+  {% set catalog_series = [] %}
+  {% if catalog_results
+        and catalog_results[0].get('series') %}
+    {% set catalog_series = catalog_results[0]['series'] %}
+  {% endif %}
+  {% set catalog_columns = [] %} {% set catalog_values = [] %}
+  {% if catalog_series %}
+    {% set catalog_columns = catalog_series[0].get('columns', []) %}
+    {% set catalog_values = catalog_series[0].get('values', []) %}
+  {% endif %}
+
+  {# ======================================================== #} {# ARCHIVED MISSION CATALOG                                 #} {# ======================================================== #}
+  {% set archived_results =
+       state_attr('sensor.tricorder_archived_missions', 'results') or [] %}
+
+  {% set archived_series = [] %}
+  {% if archived_results
+        and archived_results[0].get('series') %}
+    {% set archived_series = archived_results[0]['series'] %}
+  {% endif %}
+  {% set archived_columns = [] %} {% set archived_values = [] %}
+  {% if archived_series %}
+    {% set archived_columns = archived_series[0].get('columns', []) %}
+    {% set archived_values = archived_series[0].get('values', []) %}
+  {% endif %}
+
+  {# ======================================================== #} {# SELECTED MISSION EVENTS                                  #} {# ======================================================== #}
+  {% set event_results =
+       state_attr('sensor.tricorder_mission_events', 'results') or [] %}
+
+  {% set event_series = [] %}
+  {% if event_results
+        and event_results[0].get('series') %}
+    {% set event_series = event_results[0]['series'] %}
+  {% endif %}
+  {% set event_columns = [] %} {% set event_values = [] %}
+  {% if event_series %}
+    {% set event_columns = event_series[0].get('columns', []) %}
+    {% set event_values = event_series[0].get('values', []) %}
+  {% endif %}
+
+  {# ======================================================== #} {# SELECTED MISSION SCANS                                   #} {# ======================================================== #}
+  {% set scan_results =
+       state_attr('sensor.tricorder_mission_scans', 'results') or [] %}
+
+  {% set scan_series = [] %}
+  {% if scan_results
+        and scan_results[0].get('series') %}
+    {% set scan_series = scan_results[0]['series'] %}
+  {% endif %}
+
+  <style>
+
+    .archive-card {
+      background: #000;
+      border-radius: 38px;
+      padding: 10px 18px;
+      overflow: hidden;
+      font-family: "Antonio", "Arial Narrow", sans-serif;
+      box-sizing: border-box;
+    }
+
+    .topline {
+      height: 7px;
+      background: #8296ff;
+      margin: -5px -18px 9px -18px;
+    }
+
+    .bottomline {
+      height: 7px;
+      background: #8e87b6;
+      margin: 10px -18px -5px -18px;
+    }
+
+    .title {
+      color: white;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      margin-bottom: 9px;
+    }
+
+    .section-title {
+      color: #8296ff;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      margin: 10px 0 5px 0;
+    }
+
+    .mission-row {
+      display: grid;
+      grid-template-columns: 82px 1fr 110px;
+      height: 32px;
+      margin: 4px 0;
+      cursor: pointer;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #101010;
+      transition: transform .08s ease;
+    }
+
+    .mission-row:hover {
+      transform: scale(1.01);
+    }
+
+    .mission-row.selected {
+      outline: 1px solid #8296ff;
+      box-shadow: 0 0 7px #8296ff66;
+    }
+
+    .mission-code {
+      background: #8296ff;
+      color: black;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 900;
+      border-radius: 16px 0 0 16px;
+    }
+
+    .mission-name {
+      color: white;
+      display: flex;
+      align-items: center;
+      padding-left: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .mission-date {
+      background: #8e87b6;
+      color: black;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 900;
+      border-radius: 0 16px 16px 0;
+    }
+
+
+    /* ====================================================== */
+    /* ARCHIVED MISSIONS                                      */
+    /* ====================================================== */
+
+    .archived-panel {
+      margin-top: 9px;
+    }
+
+    .archived-panel summary {
+      list-style: none;
+      background: #151515;
+      color: #8296ff;
+      border: 1px solid #8296ff;
+      border-radius: 16px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      text-align: center;
+      user-select: none;
+    }
+
+    .archived-panel summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .archived-panel summary:hover {
+      filter: brightness(1.2);
+    }
+
+    .archived-panel[open] summary {
+      border-radius: 16px 16px 8px 8px;
+      margin-bottom: 6px;
+    }
+
+    .archived-row {
+      display: grid;
+      grid-template-columns:
+        72px
+        minmax(0, 1fr)
+        96px
+        68px
+        68px;
+      height: 32px;
+      margin: 4px 0;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #101010;
+    }
+
+    .archived-code {
+      background: #77749a;
+      color: black;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 900;
+    }
+
+    .archived-name {
+      color: white;
+      display: flex;
+      align-items: center;
+      padding-left: 8px;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .archived-date {
+      color: #bbb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      font-weight: 800;
+    }
+
+    .restore-button {
+      background: #8296ff;
+      color: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 8px;
+      font-weight: 900;
+      letter-spacing: .4px;
+    }
+
+    .restore-button:hover {
+      filter: brightness(1.15);
+    }
+
+    .delete-button {
+      background: #ef4444;
+      color: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 8px;
+      font-weight: 900;
+      letter-spacing: .4px;
+    }
+
+    .delete-button:hover {
+      filter: brightness(1.15);
+    }
+
+
+    /* ====================================================== */
+    /* SELECTED MISSION                                       */
+    /* ====================================================== */
+
+    .summary {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px;
+      margin-top: 5px;
+    }
+
+    .summary-box {
+      background: #101010;
+      border-radius: 16px;
+      min-height: 44px;
+      padding: 6px 9px;
+      box-sizing: border-box;
+    }
+
+    .summary-label {
+      font-size: 8px;
+      color: #888;
+      letter-spacing: 1px;
+      font-weight: 800;
+    }
+
+    .summary-value {
+      color: white;
+      font-size: 14px;
+      font-weight: 800;
+      margin-top: 2px;
+      overflow-wrap: anywhere;
+    }
+
+    .archive-button {
+      background: #8e87b6;
+      color: #000;
+      border-radius: 16px;
+      padding: 8px 12px;
+      margin-top: 8px;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: transform .08s ease, filter .08s ease;
+    }
+
+    .archive-button:hover {
+      transform: scale(1.01);
+      filter: brightness(1.15);
+    }
+
+
+    /* ====================================================== */
+    /* TIMELINE                                               */
+    /* ====================================================== */
+
+    .timeline-row {
+      display: grid;
+      grid-template-columns: 40px 110px 1fr 76px;
+      height: 30px;
+      margin: 4px 0;
+      cursor: pointer;
+      border-radius: 15px;
+      overflow: hidden;
+      background: #101010;
+    }
+
+    .timeline-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: black;
+    }
+
+    .timeline-time {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .timeline-event {
+      display: flex;
+      align-items: center;
+      padding-left: 8px;
+      color: black;
+      font-size: 9px;
+      font-weight: 900;
+    }
+
+    .timeline-elapsed {
+      background: #000;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .empty {
+      color: #777;
+      font-size: 11px;
+      text-align: center;
+      padding: 14px 5px;
+    }
+
+    ha-icon {
+      --mdc-icon-size: 15px;
+    }
+
+  </style>
+
+  <div class="archive-card">
+
+    <div class="topline"></div>
+
+    <div class="title">
+      MISSION ARCHIVE
+    </div>
+
+
+    <div class="section-title">
+      AVAILABLE MISSIONS
+    </div>
+
+
+    {% if catalog_values %}
+
+      {% for row in catalog_values %}
+
+        {% set time_i = catalog_columns.index('time') %}
+        {% set code_i = catalog_columns.index('mission_code') %}
+        {% set id_i = catalog_columns.index('mission_id') %}
+        {% set name_i = catalog_columns.index('mission_name') %}
+        {% set status_i = catalog_columns.index('status') %}
+
+        {% set raw_time = row[time_i] %}
+        {% set code = row[code_i] %}
+        {% set mid = row[id_i] %}
+        {% set name = row[name_i] | replace('_', ' ') %}
+        {% set status = row[status_i] %}
+
+        {% set dt = as_datetime(raw_time) %}
+
+        {% if dt %}
+          {% set local_dt = as_local(dt) %}
+          {% set display_date =
+            local_dt.strftime('%m/%d/%Y %H:%M') %}
+        {% else %}
+          {% set display_date = raw_time %}
+        {% endif %}
+
+        <div
+          class="mission-row {% if mid == selected_mid %}selected{% endif %}"
+          onclick='document.querySelector("home-assistant").hass.callService(
+            "input_text",
+            "set_value",
+            {
+              entity_id:"input_text.tric_archive_mission_id",
+              value:{{ mid | to_json }}
+            }
+          );'
+        >
+
+          <div class="mission-code">
+            {{ code }}
+          </div>
+
+          <div class="mission-name">
+            {{ name }}
+          </div>
+
+          <div class="mission-date">
+            {{ display_date }}
+          </div>
+
+        </div>
+
+      {% endfor %}
+
+    {% else %}
+
+      <div class="empty">
+        NO AVAILABLE MISSIONS
+      </div>
+
+    {% endif %}
+
+
+    {# ======================================================== #}
+    {# VIEW ARCHIVED MISSIONS                                   #}
+    {# ======================================================== #}
+
+    <details class="archived-panel">
+
+      <summary>
+        VIEW ARCHIVED MISSIONS ·
+        {{ states('sensor.tricorder_archived_missions') }}
+      </summary>
+
+
+      {% if archived_values %}
+
+        {% for row in archived_values %}
+
+          {% set atime_i = archived_columns.index('time') %}
+          {% set acode_i = archived_columns.index('mission_code') %}
+          {% set aid_i = archived_columns.index('mission_id') %}
+          {% set aname_i = archived_columns.index('mission_name') %}
+
+          {% set araw_time = row[atime_i] %}
+          {% set acode = row[acode_i] %}
+          {% set amid = row[aid_i] %}
+          {% set aname = row[aname_i] | replace('_', ' ') %}
+
+          {% set adt = as_datetime(araw_time) %}
+
+          {% if adt %}
+            {% set alocal_dt = as_local(adt) %}
+            {% set adisplay_date =
+              alocal_dt.strftime('%m/%d/%y %H:%M') %}
+          {% else %}
+            {% set adisplay_date = araw_time %}
+          {% endif %}
+
+
+          <div class="archived-row">
+
+            <div class="archived-code">
+              {{ acode }}
+            </div>
+
+            <div class="archived-name">
+              {{ aname }}
+            </div>
+
+            <div class="archived-date">
+              {{ adisplay_date }}
+            </div>
+
+            <div
+              class="restore-button"
+              onclick='
+                event.stopPropagation();
+                document.querySelector("home-assistant").hass.callService(
+                  "script",
+                  "tricorder_restore_archived_mission",
+                  {
+                    mission_id:{{ amid | to_json }}
+                  }
+                );
+              '
+            >
+              RESTORE
+            </div>
+
+            <div
+              class="delete-button"
+              onclick='
+                event.stopPropagation();
+
+                if (
+                  window.confirm(
+                    "PERMANENTLY DELETE " +
+                    {{ acode | to_json }} +
+                    "?\n\nThis removes all stored records for this mission and cannot be undone."
+                  )
+                ) {
+                  document.querySelector("home-assistant").hass.callService(
+                    "script",
+                    "tricorder_delete_archived_mission",
+                    {
+                      mission_id:{{ amid | to_json }}
+                    }
+                  );
+                }
+              '
+            >
+              DELETE
+            </div>
+
+          </div>
+
+        {% endfor %}
+
+      {% else %}
+
+        <div class="empty">
+          NO ARCHIVED MISSIONS
+        </div>
+
+      {% endif %}
+
+    </details>
+
+
+    {# ======================================================== #}
+    {# SELECTED MISSION                                         #}
+    {# ======================================================== #}
+
+    {% if event_values %}
+
+      {% set first = event_values[0] %}
+      {% set last = event_values[-1] %}
+
+      {% set event_time_i = event_columns.index('time') %}
+      {% set elapsed_i = event_columns.index('elapsed_seconds') %}
+      {% set code_i = event_columns.index('mission_code') %}
+      {% set name_i = event_columns.index('mission_name') %}
+      {% set status_i = event_columns.index('status') %}
+
+      {% set mission_code = first[code_i] %}
+      {% set mission_name = first[name_i] | replace('_', ' ') %}
+      {% set start_raw = first[event_time_i] %}
+      {% set final_elapsed = last[elapsed_i] | float(0) %}
+      {% set final_status = last[status_i] %}
+
+      {% set start_dt = as_datetime(start_raw) %}
+
+      {% if start_dt %}
+        {% set start_local = as_local(start_dt) %}
+        {% set start_display =
+          start_local.strftime('%m/%d/%Y %H:%M:%S') %}
+      {% else %}
+        {% set start_display = start_raw %}
+      {% endif %}
+
+      {% set total_seconds = final_elapsed | int %}
+      {% set hours = total_seconds // 3600 %}
+      {% set minutes = (total_seconds % 3600) // 60 %}
+      {% set seconds = total_seconds % 60 %}
+
+      {% set duration =
+        '%02d:%02d:%02d' | format(hours, minutes, seconds) %}
+
+
+      <div class="section-title">
+        SELECTED MISSION
+      </div>
+
+      <div class="summary">
+
+        <div class="summary-box">
+
+          <div class="summary-label">
+            MISSION
+          </div>
+
+          <div class="summary-value">
+            {{ mission_code }} · {{ mission_name }}
+          </div>
+
+        </div>
+
+
+        <div class="summary-box">
+
+          <div class="summary-label">
+            STATUS
+          </div>
+
+          <div class="summary-value">
+            {{ final_status | upper }}
+          </div>
+
+        </div>
+
+
+        <div class="summary-box">
+
+          <div class="summary-label">
+            START
+          </div>
+
+          <div
+            class="summary-value"
+            style="font-size:11px;"
+          >
+            {{ start_display }}
+          </div>
+
+        </div>
+
+
+        <div class="summary-box">
+
+          <div class="summary-label">
+            DURATION · SCANS
+          </div>
+
+          <div class="summary-value">
+            {{ duration }} ·
+            {{ states('sensor.tricorder_mission_scans') }}
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div
+        class="archive-button"
+        onclick='document.querySelector("home-assistant").hass.callService(
+          "script",
+          "turn_on",
+          {
+            entity_id:"script.tricorder_archive_selected_mission"
+          }
+        );'
+      >
+        ARCHIVE MISSION
+      </div>
+
+
+      <div class="section-title">
+        MISSION TIMELINE
+      </div>
+
+
+      {% for row in event_values[:20] %}
+
+        {% set time_i = event_columns.index('time') %}
+        {% set elapsed_i = event_columns.index('elapsed_seconds') %}
+        {% set event_i = event_columns.index('event') %}
+        {% set status_i = event_columns.index('status') %}
+
+        {% set event_time = row[time_i] %}
+        {% set elapsed = row[elapsed_i] | float(0) %}
+        {% set event = row[event_i] %}
+        {% set event_status = row[status_i] %}
+
+        {% set dt = as_datetime(event_time) %}
+
+        {% if dt %}
+          {% set local_dt = as_local(dt) %}
+          {% set clock =
+            local_dt.strftime('%H:%M:%S') %}
+          {% set full_time =
+            local_dt.strftime('%m/%d/%Y %H:%M:%S') %}
+        {% else %}
+          {% set clock = event_time %}
+          {% set full_time = event_time %}
+        {% endif %}
+
+        {% set etotal = elapsed | int %}
+        {% set eh = etotal // 3600 %}
+        {% set em = (etotal % 3600) // 60 %}
+        {% set es = etotal % 60 %}
+
+        {% set elapsed_display =
+          '+' ~ ('%02d:%02d:%02d' | format(eh, em, es)) %}
+
+
+        {% if event == 'mission_start' %}
+
+          {% set color = '#22c55e' %}
+          {% set icon = 'mdi:play' %}
+          {% set label = 'MISSION START' %}
+
+        {% elif event == 'mission_end' %}
+
+          {% set color = '#8e87b6' %}
+          {% set icon = 'mdi:stop' %}
+          {% set label = 'MISSION END' %}
+
+        {% elif event == 'atmosphere_scan' %}
+
+          {% set color = '#8296ff' %}
+          {% set icon = 'mdi:weather-windy' %}
+          {% set label = 'ATMOSPHERE SCAN' %}
+
+        {% elif event == 'radiation_scan' %}
+
+          {% set color = '#ef4444' %}
+          {% set icon = 'mdi:radioactive' %}
+          {% set label = 'RADIATION SCAN' %}
+
+        {% elif event == 'audio_scan' %}
+
+          {% set color = '#a78bfa' %}
+          {% set icon = 'mdi:waveform' %}
+          {% set label = 'AUDIO SCAN' %}
+
+        {% elif event == 'color_scan' %}
+
+          {% set color = '#22c55e' %}
+          {% set icon = 'mdi:palette' %}
+          {% set label = 'COLOR SCAN' %}
+
+        {% elif event == 'orientation_scan' %}
+
+          {% set color = '#f59e0b' %}
+          {% set icon = 'mdi:compass' %}
+          {% set label = 'ORIENTATION SCAN' %}
+
+        {% elif event == 'magnetic_scan' %}
+
+          {% set color = '#22d3ee' %}
+          {% set icon = 'mdi:magnet' %}
+          {% set label = 'MAGNETIC SCAN' %}
+
+        {% elif event == 'location_update' %}
+
+          {% set color = '#facc15' %}
+          {% set icon = 'mdi:crosshairs-gps' %}
+          {% set label = 'LOCATION FIX' %}
+
+        {% else %}
+
+          {% set color = '#77749a' %}
+          {% set icon = 'mdi:database' %}
+          {% set label =
+            event | replace('_',' ') | upper %}
+
+        {% endif %}
+
+
+        {# ---------------------------------------------------- #}
+        {# FIND MATCHING DETAILED SCAN RECORD                   #}
+        {# ---------------------------------------------------- #}
+
+        {% set target_measurement = '' %}
+
+        {% if event.endswith('_scan') %}
+
+          {% set target_measurement =
+            'tricorder_' ~ event | replace('_scan','') %}
+
+        {% elif event == 'location_update' %}
+
+          {% set target_measurement =
+            'tricorder_location' %}
+
+        {% endif %}
+
+
+        {% set hit = namespace(
+          found=false,
+          columns=[],
+          values=[]
+        ) %}
+
+
+        {% if target_measurement %}
+
+          {% for series in scan_series %}
+
+            {% if series.get('name','') ==
+                  target_measurement %}
+
+              {% set cols =
+                series.get('columns',[]) %}
+
+              {% set vals =
+                series.get('values',[]) %}
+
+              {% if 'time' in cols %}
+
+                {% set stime_i =
+                  cols.index('time') %}
+
+                {% for scanrow in vals %}
+
+                  {% if scanrow[stime_i] ==
+                        event_time %}
+
+                    {% set hit.found = true %}
+                    {% set hit.columns = cols %}
+                    {% set hit.values = scanrow %}
+
+                  {% endif %}
+
+                {% endfor %}
+
+              {% endif %}
+
+            {% endif %}
+
+          {% endfor %}
+
+        {% endif %}
+
+
+        {% set popup_html %}
+
+          <div style="
+            background:#000;
+            color:#fff;
+            padding:14px;
+            font-family:Arial,sans-serif;
+          ">
+
+            <div style="
+              font-size:18px;
+              font-weight:800;
+              margin-bottom:4px;
+            ">
+              {{ label }}
+            </div>
+
+            <div style="
+              color:#8296ff;
+              font-size:12px;
+              margin-bottom:12px;
+            ">
+              {{ full_time }} · {{ elapsed_display }}
+            </div>
+
+
+            {% if event_status not in
+                  ['none', '', none] %}
+
+              <div style="
+                margin-bottom:10px;
+                font-size:12px;
+              ">
+
+                <b>STATUS:</b>
+                {{ event_status | upper }}
+
+              </div>
+
+            {% endif %}
+
+
+            {% if hit.found %}
+
+              {% for i in range(
+                    hit.columns | count
+                  ) %}
+
+                {% set field =
+                  hit.columns[i] %}
+
+                {% set value =
+                  hit.values[i] %}
+
+                {% if value is not none
+                      and field not in [
+                        'time',
+                        'mission_code',
+                        'mission_id',
+                        'mission_name',
+                        'scope',
+                        'elapsed_seconds',
+                        'status'
+                      ] %}
+
+                  <div style="
+                    display:grid;
+                    grid-template-columns:
+                      1.25fr 1fr;
+                    border-bottom:
+                      1px solid #222;
+                    padding:6px 0;
+                    font-size:12px;
+                  ">
+
+                    <div style="color:#999;">
+                      {{
+                        field
+                        | replace('_',' ')
+                        | upper
+                      }}
+                    </div>
+
+                    <div style="
+                      text-align:right;
+                      font-weight:700;
+                    ">
+                      {{ value }}
+                    </div>
+
+                  </div>
+
+                {% endif %}
+
+              {% endfor %}
+
+            {% else %}
+
+              <div style="
+                color:#888;
+                font-size:12px;
+              ">
+                MISSION EVENT
+              </div>
+
+            {% endif %}
+
+          </div>
+
+        {% endset %}
+
+
+        <div
+          class="timeline-row"
+          onclick='this.dispatchEvent(
+            new CustomEvent(
+              "ll-custom",
+              {
+                bubbles:true,
+                composed:true,
+                detail:{
+                  browser_mod:{
+                    service:"browser_mod.popup",
+                    data:{
+                      title:{{ label | to_json }},
+                      content:{{ popup_html | to_json }},
+                      initial_style:"normal"
+                    }
+                  }
+                }
+              }
+            )
+          )'
+        >
+
+          <div
+            class="timeline-icon"
+            style="background:{{ color }};"
+          >
+            <ha-icon icon="{{ icon }}"></ha-icon>
+          </div>
+
+          <div class="timeline-time">
+            {{ clock }}
+          </div>
+
+          <div
+            class="timeline-event"
+            style="background:{{ color }};"
+          >
+            {{ label }}
+          </div>
+
+          <div class="timeline-elapsed">
+            {{ elapsed_display }}
+          </div>
+
+        </div>
+
+      {% endfor %}
+
+
+    {% else %}
+
+      <div class="section-title">
+        SELECTED MISSION
+      </div>
+
+      <div class="empty">
+        SELECT A MISSION ABOVE
+      </div>
+
+    {% endif %}
+
+
+    <div class="bottomline"></div>
+
+  </div>
+card_mod:
+  style: |
+    ha-card {
+      background: #29364c !important;
+      padding: 2px !important;
+      border: none !important;
+      border-radius: 40px !important;
+      box-shadow: none !important;
+      overflow: hidden !important;
+    }

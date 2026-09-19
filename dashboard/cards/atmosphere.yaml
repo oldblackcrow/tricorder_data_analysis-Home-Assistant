@@ -1,0 +1,552 @@
+type: custom:html-template-card
+ignore_line_breaks: true
+entities:
+- input_number.tric_temperature
+- input_number.tric_humidity
+- input_number.tric_pressure
+- input_number.tric_altitude
+- input_number.tric_lux
+- input_number.tric_proximity
+- input_number.tric_eco2
+- input_number.tric_tvoc
+- input_datetime.tric_atmosphere_time
+- sensor.tricorder_mission_scans
+content: |
+  {% set temp = states('input_number.tric_temperature') | float(0) %} {% set humidity = states('input_number.tric_humidity') | float(0) %} {% set pressure = states('input_number.tric_pressure') | float(0) %} {% set altitude = states('input_number.tric_altitude') | float(0) %} {% set lux = states('input_number.tric_lux') | float(0) %} {% set proximity = states('input_number.tric_proximity') | float(0) %} {% set eco2 = states('input_number.tric_eco2') | float(0) %} {% set tvoc = states('input_number.tric_tvoc') | float(0) %}
+  {% set raw_time = states('input_datetime.tric_atmosphere_time') %} {% set scan_time = as_datetime(raw_time) %} {% if scan_time %}
+    {% set recorded = scan_time.strftime('%m/%d/%Y %H:%M:%S') %}
+    {% set scan_end_ts = as_timestamp(scan_time) %}
+  {% else %}
+    {% set recorded = raw_time %}
+    {% set scan_end_ts = none %}
+  {% endif %}
+  {% if temp <= 55 %}
+    {% set temp_color = '#3b82f6' %}
+  {% elif temp <= 80 %}
+    {% set temp_color = '#22c55e' %}
+  {% else %}
+    {% set temp_color = '#ef4444' %}
+  {% endif %}
+  {# Find latest Atmosphere scan points near the recorded scan time. #} {% set scan_results =
+       state_attr('sensor.tricorder_mission_scans', 'results') or [] %}
+  {% set scan_series = [] %} {% if scan_results and scan_results[0].get('series') %}
+    {% set scan_series = scan_results[0]['series'] %}
+  {% endif %}
+  {% set atmosphere = namespace(columns=[], rows=[]) %} {% for series in scan_series %}
+    {% if series.get('name', '') == 'tricorder_atmosphere' %}
+      {% set atmosphere.columns = series.get('columns', []) %}
+      {% set atmosphere.rows = series.get('values', []) %}
+    {% endif %}
+  {% endfor %}
+  {% set candidates = namespace(rows=[]) %} {% if scan_end_ts is not none and 'time' in atmosphere.columns %}
+    {% set ti = atmosphere.columns.index('time') %}
+    {% for row in atmosphere.rows %}
+      {% set dt = as_datetime(row[ti]) %}
+      {% if dt %}
+        {% set ts = as_timestamp(dt) %}
+        {% if ts >= scan_end_ts - 40 and ts <= scan_end_ts + 2 %}
+          {% set candidates.rows = candidates.rows + [row] %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {# Keep only the most recent contiguous scan cluster. #} {% set cluster = namespace(rows=[], active=true, last_ts=none) %} {% if candidates.rows and 'time' in atmosphere.columns %}
+    {% set ti = atmosphere.columns.index('time') %}
+    {% for row in candidates.rows | reverse %}
+      {% if cluster.active %}
+        {% set dt = as_datetime(row[ti]) %}
+        {% if dt %}
+          {% set ts = as_timestamp(dt) %}
+          {% if cluster.last_ts is none or (cluster.last_ts - ts) <= 2.5 %}
+            {% set cluster.rows = [row] + cluster.rows %}
+            {% set cluster.last_ts = ts %}
+          {% else %}
+            {% set cluster.active = false %}
+          {% endif %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {# If the helper timestamp belongs to a different/newer Mission,
+     fall back to the newest contiguous Atmosphere scan in the selected Mission. #}
+  {% if not cluster.rows and atmosphere.rows and 'time' in atmosphere.columns %}
+    {% set ti = atmosphere.columns.index('time') %}
+    {% set fallback = namespace(rows=[], active=true, last_ts=none) %}
+
+    {% for row in atmosphere.rows | reverse %}
+      {% if fallback.active %}
+        {% set dt = as_datetime(row[ti]) %}
+        {% if dt %}
+          {% set ts = as_timestamp(dt) %}
+          {% if fallback.last_ts is none or (fallback.last_ts - ts) <= 2.5 %}
+            {% set fallback.rows = [row] + fallback.rows %}
+            {% set fallback.last_ts = ts %}
+          {% else %}
+            {% set fallback.active = false %}
+          {% endif %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+
+    {% set cluster.rows = fallback.rows %}
+  {% endif %}
+  {% set scan_rows = cluster.rows %}
+  {# Use the selected Mission scan's own timestamp, not a helper from another Mission. #} {% if scan_rows and 'time' in atmosphere.columns %}
+    {% set selected_dt = as_datetime(scan_rows[-1][atmosphere.columns.index('time')]) %}
+    {% if selected_dt %}
+      {% set recorded = selected_dt.strftime('%m/%d/%Y %H:%M:%S') %}
+    {% endif %}
+  {% endif %}
+  {# Keep the main card tied to the same saved Atmosphere scan used by the popups. #} {% if scan_rows %}
+    {% set last_row = scan_rows[-1] %}
+
+    {% if 'temperature_f' in atmosphere.columns %}
+      {% set temp = last_row[atmosphere.columns.index('temperature_f')] | float(temp) %}
+    {% endif %}
+    {% if 'humidity_percent' in atmosphere.columns %}
+      {% set humidity = last_row[atmosphere.columns.index('humidity_percent')] | float(humidity) %}
+    {% endif %}
+    {% if 'pressure_hpa' in atmosphere.columns %}
+      {% set pressure = last_row[atmosphere.columns.index('pressure_hpa')] | float(pressure) %}
+    {% endif %}
+    {% if 'altitude_m' in atmosphere.columns %}
+      {% set altitude = last_row[atmosphere.columns.index('altitude_m')] | float(altitude) %}
+    {% endif %}
+    {% if 'lux' in atmosphere.columns %}
+      {% set lux = last_row[atmosphere.columns.index('lux')] | float(lux) %}
+    {% endif %}
+    {% if 'proximity' in atmosphere.columns %}
+      {% set proximity = last_row[atmosphere.columns.index('proximity')] | float(proximity) %}
+    {% endif %}
+    {% if 'eco2_ppm' in atmosphere.columns and last_row[atmosphere.columns.index('eco2_ppm')] is not none %}
+      {% set eco2 = last_row[atmosphere.columns.index('eco2_ppm')] | float(eco2) %}
+    {% endif %}
+    {% if 'tvoc_ppb' in atmosphere.columns and last_row[atmosphere.columns.index('tvoc_ppb')] is not none %}
+      {% set tvoc = last_row[atmosphere.columns.index('tvoc_ppb')] | float(tvoc) %}
+    {% endif %}
+  {% endif %}
+  {% macro sensor_popup(field, label, unit, color, decimals=1) %}
+    {% set detail_decimals = 0 if decimals == 0 else 3 %}
+    {% set ns = namespace(points=[], values=[], first_ts=none, last_ts=none) %}
+
+    {% if field in atmosphere.columns and 'time' in atmosphere.columns %}
+      {% set fi = atmosphere.columns.index(field) %}
+      {% set ti = atmosphere.columns.index('time') %}
+      {% set ei = atmosphere.columns.index('elapsed_seconds') if 'elapsed_seconds' in atmosphere.columns else none %}
+
+      {% for row in scan_rows %}
+        {% if row[fi] is not none %}
+          {% set dt = as_datetime(row[ti]) %}
+          {% if dt %}
+            {% set ts = as_timestamp(dt) %}
+            {% if ns.first_ts is none %}{% set ns.first_ts = ts %}{% endif %}
+            {% set ns.last_ts = ts %}
+            {% set ns.values = ns.values + [row[fi] | float(0)] %}
+            {% set ns.points = ns.points + [{
+              'ts': ts,
+              'value': row[fi] | float(0),
+              'time': dt.strftime('%H:%M:%S'),
+              'mission': row[ei] if ei is not none else none
+            }] %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+
+    {% set count = ns.points | count %}
+
+    {% if count %}
+      {% set minval = ns.values | min %}
+      {% set maxval = ns.values | max %}
+      {% set avgval = (ns.values | sum) / count %}
+      {% set span = (ns.last_ts - ns.first_ts) if count > 1 else 0 %}
+      {% set duration = ((span + 1) | round(0) | int) if count > 1 else 1 %}
+
+      {% set picks = namespace(mini=1, maxi=1, min_found=false, max_found=false) %}
+      {% set graph = namespace(coords=[]) %}
+
+      {% for p in ns.points %}
+        {% if not picks.min_found and p['value'] == minval %}
+          {% set picks.mini = loop.index %}
+          {% set picks.min_found = true %}
+        {% endif %}
+        {% if not picks.max_found and p['value'] == maxval %}
+          {% set picks.maxi = loop.index %}
+          {% set picks.max_found = true %}
+        {% endif %}
+
+        {% set x = 150 if span <= 0 else 14 + (((p['ts'] - ns.first_ts) / span) * 272) %}
+        {% set y = 70 if maxval == minval else 126 - (((p['value'] - minval) / (maxval - minval)) * 106) %}
+        {% set graph.coords = graph.coords + [{
+          'x': x | round(1),
+          'y': y | round(1),
+          'left': ((x / 300) * 100) | round(3),
+          'top': ((y / 150) * 100) | round(3),
+          'offset': (p['ts'] - ns.first_ts) | round(1),
+          'index': loop.index,
+          'p': p
+        }] %}
+      {% endfor %}
+
+      <div class="ap">
+        <style>
+          .ap{background:#000;color:#fff;padding:16px;font-family:Antonio,Arial Narrow,sans-serif;box-sizing:border-box}
+          .ap *{box-sizing:border-box}.ar{position:absolute;opacity:0;pointer-events:none}.ac{cursor:pointer}.ac:hover{filter:brightness(1.12)}
+          .bar{height:7px;background:{{ color }};border-radius:8px;margin-bottom:13px}.ttl{text-align:center;font-size:22px;font-weight:900;letter-spacing:1px}
+          .sub{text-align:center;color:{{ color }};font-size:11px;font-weight:800;letter-spacing:1px;margin:3px 0 14px}
+          .sum{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}.tile{background:#111;border-radius:11px;padding:8px;text-align:center}
+          .k{font-size:8px;color:#777}.v{font-size:15px;font-weight:900}.u{font-size:8px;color:#aaa}
+          .sel{display:none}.blank{display:block;text-align:center;color:#777;font-size:10px;font-weight:800;padding:16px 0}
+          .sw{background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:9px;margin-bottom:12px;min-height:54px}
+          .sh{display:flex;justify-content:space-between;font-size:13px;color:#ccc;margin-bottom:7px}.sv{background:#050505;border-radius:8px;padding:9px;text-align:center;font-size:18px;font-weight:900}
+          .graph{background:#080808;border:1px solid #222;border-radius:14px;padding:10px}.gp{position:relative;width:100%;height:260px}
+          .axis{display:flex;justify-content:space-between;color:#aaa;font-size:14px;font-weight:800;margin-top:4px}.stamp{font-size:15px;color:#ddd}
+          .rows{margin-top:12px;background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:8px}.rh{font-size:9px;color:#888;font-weight:800;letter-spacing:1px;margin-bottom:4px}
+          .row{display:grid;grid-template-columns:72px 1fr;gap:8px;padding:7px 5px;border-top:1px solid #181818;font-size:11px}.last{display:block;margin-top:10px;text-align:center;font-size:11px;color:#888}
+          {% for c in graph.coords %}
+            #{{ field }}-p{{ c['index'] }}:checked~.sw .blank{display:none}
+            #{{ field }}-p{{ c['index'] }}:checked~.sw .s{{ c['index'] }}{display:block}
+            #{{ field }}-p{{ c['index'] }}:checked~.graph .d{{ c['index'] }}{stroke:#fff;stroke-width:4;filter:drop-shadow(0 0 4px {{ color }})}
+            #{{ field }}-p{{ c['index'] }}:checked~.rows .r{{ c['index'] }}{background:#171717;color:#fff}
+          {% endfor %}
+        </style>
+
+        {% for c in graph.coords %}
+          <input class="ar" type="radio" name="{{ field }}-p" id="{{ field }}-p{{ c['index'] }}">
+        {% endfor %}
+
+        <div class="bar"></div>
+        <div class="ttl">{{ label }}</div>
+        <div class="sub">{{ duration }} SECOND SCAN</div>
+
+        <div class="sum">
+          <label class="tile ac" for="{{ field }}-p{{ picks.mini }}"><div class="k">MIN</div><div class="v">{{ minval | round(decimals) }} <span class="u">{{ unit }}</span></div></label>
+          <div class="tile"><div class="k">AVG</div><div class="v">{{ avgval | round(decimals) }} <span class="u">{{ unit }}</span></div></div>
+          <label class="tile ac" for="{{ field }}-p{{ picks.maxi }}"><div class="k">MAX</div><div class="v">{{ maxval | round(decimals) }} <span class="u">{{ unit }}</span></div></label>
+          <div class="tile"><div class="k">SAMPLES</div><div class="v">{{ count }}</div></div>
+        </div>
+
+        <div class="sw">
+          <div class="blank">TAP A POINT OR SAMPLE TO INSPECT</div>
+          {% for c in graph.coords %}
+            <div class="sel s{{ c['index'] }}">
+              <div class="sh"><b style="color:{{ color }}">SAMPLE {{ c['index'] }}</b><span>{{ c['p']['time'] }} · +{{ c['offset'] }} s</span></div>
+              <div class="sv">{{ c['p']['value'] | round(detail_decimals) }} <span class="u">{{ unit }}</span></div>
+              <div class="k" style="text-align:center;margin-top:6px">MISSION {% if c['p']['mission'] is not none %}{{ c['p']['mission'] | round(1) }} s{% else %}--{% endif %}</div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="graph">
+          <div class="gp">
+            <svg viewBox="0 0 300 150" preserveAspectRatio="none" style="width:100%;height:260px;display:block;position:absolute;inset:0">
+              <line x1="14" y1="126" x2="286" y2="126" stroke="#333" stroke-width="1"/>
+              <line x1="14" y1="20" x2="14" y2="126" stroke="#333" stroke-width="1"/>
+              {% if count > 1 %}
+                <polyline points="{% for c in graph.coords %}{{ c['x'] }},{{ c['y'] }} {% endfor %}" fill="none" stroke="{{ color }}" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
+              {% endif %}
+              {% for c in graph.coords %}
+                <circle class="d{{ c['index'] }}" cx="{{ c['x'] }}" cy="{{ c['y'] }}" r="5" fill="{{ color }}"/>
+              {% endfor %}
+            </svg>
+            {% for c in graph.coords %}
+              <label class="ac" for="{{ field }}-p{{ c['index'] }}" style="position:absolute;left:{{ c['left'] }}%;top:{{ c['top'] }}%;width:30px;height:30px;transform:translate(-50%,-50%);border-radius:50%;z-index:3"></label>
+            {% endfor %}
+          </div>
+          <div class="axis"><span>0 s</span><span class="stamp">{{ recorded }}</span><span>{{ duration }} s</span></div>
+        </div>
+
+        <div class="rows">
+          <div class="rh">SAMPLE DETAIL</div>
+          {% for c in graph.coords %}
+            <label class="row ac r{{ c['index'] }}" for="{{ field }}-p{{ c['index'] }}"><span style="color:#aaa">{{ c['p']['time'] }}</span><span>{{ label }} {{ c['p']['value'] | round(detail_decimals) }} {{ unit }}</span></label>
+          {% endfor %}
+        </div>
+
+        <label class="last ac" for="{{ field }}-p{{ count }}">LAST {{ ns.values[-1] | round(detail_decimals) }} {{ unit }}</label>
+        <div class="bar" style="margin-top:13px;margin-bottom:0"></div>
+      </div>
+
+    {% else %}
+      <div style="background:#000;color:#fff;padding:22px;font-family:Antonio,Arial Narrow,sans-serif;text-align:center">
+        <div style="font-size:20px;font-weight:900">{{ label }}</div>
+        <div style="color:#888;margin-top:12px">No time-series samples found for this scan.</div>
+      </div>
+    {% endif %}
+  {% endmacro %}
+  {% set temp_popup = sensor_popup(
+    'temperature_f','TEMPERATURE','°F',temp_color,1) %}
+  {% set humidity_popup = sensor_popup(
+    'humidity_percent','HUMIDITY','%','#8296ff',1) %}
+  {% set pressure_popup = sensor_popup(
+    'pressure_hpa','PRESSURE','hPa','#f59e0b',1) %}
+  {% set altitude_popup = sensor_popup(
+    'altitude_m','ALTITUDE','m','#8e87b6',1) %}
+  {% set lux_popup = sensor_popup(
+    'lux','LIGHT','lx','#facc15',1) %}
+  {% set proximity_popup = sensor_popup(
+    'proximity','PROXIMITY','','#3b82f6',0) %}
+  {% set eco2_popup = sensor_popup(
+    'eco2_ppm','eCO₂','ppm','#22c55e',0) %}
+  {% set tvoc_popup = sensor_popup(
+    'tvoc_ppb','TVOC','ppb','#f59e0b',0) %}
+
+  <style>
+    .env-card {
+      background:#000;
+      border:0;
+      border-radius:38px;
+      padding:10px 18px;
+      overflow:hidden;
+      font-family:"Antonio","Arial Narrow",sans-serif;
+      box-sizing:border-box;
+    }
+
+    .env-topline {
+      height:7px;
+      background:{{ temp_color }};
+      margin:-5px -18px 10px -18px;
+    }
+
+    .env-bottomline {
+      height:7px;
+      background:{{ temp_color }};
+      margin:10px -18px -5px -18px;
+    }
+
+    .env-title {
+      color:#fff;
+      text-align:center;
+      font-size:18px;
+      font-weight:800;
+      letter-spacing:1px;
+      margin:0 0 7px 0;
+    }
+
+    .env-row {
+      display:grid;
+      height:30px;
+      margin:4px 0;
+      cursor:pointer;
+      user-select:none;
+    }
+
+    .env-row:hover {
+      filter:brightness(1.08);
+    }
+
+    .env-row.left {
+      grid-template-columns:52px 1fr 1.75fr;
+    }
+
+    .env-row.right {
+      grid-template-columns:1.75fr 1fr 52px;
+    }
+
+    .env-cap {
+      color:#000;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .leftcap {
+      border-radius:15px 0 0 15px;
+    }
+
+    .rightcap {
+      border-radius:0 15px 15px 0;
+    }
+
+    .env-value {
+      background:#000;
+      color:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      text-align:center;
+      font-size:17px;
+      font-weight:800;
+      white-space:nowrap;
+      padding:0 4px;
+    }
+
+    .env-value.small {
+      font-size:14px;
+    }
+
+    .unit {
+      font-size:9px;
+      font-weight:600;
+      margin-left:3px;
+    }
+
+    .env-label {
+      color:#000;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      text-align:center;
+      font-size:9px;
+      font-weight:800;
+      padding:0 6px;
+    }
+
+    .round-right {
+      border-radius:0 15px 15px 0;
+    }
+
+    .round-left {
+      border-radius:15px 0 0 15px;
+    }
+
+    ha-icon {
+      --mdc-icon-size:16px;
+    }
+  </style>
+  <div class="env-card">
+    <div class="env-topline"></div>
+
+    <div class="env-title">
+      ATMOSPHERE
+    </div>
+
+    <div
+      class="env-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"TEMPERATURE SCAN",content:{{ temp_popup | to_json }},initial_style:"normal"}}}}))'
+    >
+      <div class="env-cap leftcap" style="background:{{ temp_color }};">
+        <ha-icon icon="mdi:thermometer"></ha-icon>
+      </div>
+      <div class="env-value">
+        {{ '%.1f' | format(temp) }}
+        <span class="unit">{{ state_attr('input_number.tric_temperature','unit_of_measurement') or '' }}</span>
+      </div>
+      <div class="env-label round-right" style="background:{{ temp_color }};">
+        TEMPERATURE
+      </div>
+    </div>
+
+    <div
+      class="env-row right"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"HUMIDITY SCAN",content:{{ humidity_popup | to_json }},initial_style:"normal"}}}}))'
+    >
+      <div class="env-label round-left" style="background:#8296ff;">
+        HUMIDITY
+      </div>
+      <div class="env-value">
+        {{ '%.1f' | format(humidity) }}
+        <span class="unit">{{ state_attr('input_number.tric_humidity','unit_of_measurement') or '' }}</span>
+      </div>
+      <div class="env-cap rightcap" style="background:#8296ff;">
+        <ha-icon icon="mdi:water-percent"></ha-icon>
+      </div>
+    </div>
+
+    <div
+      class="env-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"PRESSURE SCAN",content:{{ pressure_popup | to_json }},initial_style:"normal"}}}}))'
+    >
+      <div class="env-cap leftcap" style="background:#f59e0b;">
+        <ha-icon icon="mdi:gauge"></ha-icon>
+      </div>
+      <div class="env-value small">
+        {{ '%.1f' | format(pressure) }}
+        <span class="unit">{{ state_attr('input_number.tric_pressure','unit_of_measurement') or '' }}</span>
+      </div>
+      <div class="env-label round-right" style="background:#f59e0b;">
+        PRESSURE
+      </div>
+    </div>
+
+    <div
+      class="env-row right"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"ALTITUDE SCAN",content:{{ altitude_popup | to_json }},initial_style:"normal"}}}}))'
+    >
+      <div class="env-label round-left" style="background:#8e87b6;">
+        ALTITUDE
+      </div>
+      <div class="env-value small">
+        {{ '%.1f' | format(altitude) }}
+        <span class="unit">{{ state_attr('input_number.tric_altitude','unit_of_measurement') or '' }}</span>
+      </div>
+      <div class="env-cap rightcap" style="background:#8e87b6;">
+        <ha-icon icon="mdi:image-filter-hdr"></ha-icon>
+      </div>
+    </div>
+
+    <div
+      class="env-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"LIGHT SCAN",content:{{ lux_popup | to_json }},initial_style:"normal"}}}}))'
+    >
+      <div class="env-cap leftcap" style="background:#facc15;">
+        <ha-icon icon="mdi:brightness-5"></ha-icon>
+      </div>
+      <div class="env-value small">
+        {{ '%.1f' | format(lux) }}
+        <span class="unit">{{ state_attr('input_number.tric_lux','unit_of_measurement') or '' }}</span>
+      </div>
+      <div class="env-label round-right" style="background:#facc15;">
+        LIGHT
+      </div>
+    </div>
+
+    <div
+      class="env-row right"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"PROXIMITY SCAN",content:{{ proximity_popup | to_json }},initial_style:"normal"}}}}))'
+    >
+      <div class="env-label round-left" style="background:#3b82f6;">
+        PROXIMITY
+      </div>
+      <div class="env-value">
+        {{ proximity | round(0) | int }}
+      </div>
+      <div class="env-cap rightcap" style="background:#3b82f6;">
+        <ha-icon icon="mdi:radar"></ha-icon>
+      </div>
+    </div>
+
+    <div
+      class="env-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"eCO2 SCAN",content:{{ eco2_popup | to_json }},initial_style:"normal"}}}}))'
+    >
+      <div class="env-cap leftcap" style="background:#22c55e;">
+        <ha-icon icon="mdi:molecule-co2"></ha-icon>
+      </div>
+      <div class="env-value small">
+        {{ eco2 | round(0) | int }}
+        <span class="unit">{{ state_attr('input_number.tric_eco2','unit_of_measurement') or '' }}</span>
+      </div>
+      <div class="env-label round-right" style="background:#22c55e;">
+        eCO₂
+      </div>
+    </div>
+
+    <div
+      class="env-row right"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"TVOC SCAN",content:{{ tvoc_popup | to_json }},initial_style:"normal"}}}}))'
+    >
+      <div class="env-label round-left" style="background:#f59e0b;">
+        TVOC
+      </div>
+      <div class="env-value small">
+        {{ tvoc | round(0) | int }}
+        <span class="unit">{{ state_attr('input_number.tric_tvoc','unit_of_measurement') or '' }}</span>
+      </div>
+      <div class="env-cap rightcap" style="background:#f59e0b;">
+        <ha-icon icon="mdi:molecule"></ha-icon>
+      </div>
+    </div>
+
+    <div class="env-bottomline"></div>
+  </div>
+card_mod:
+  style: |
+    ha-card {
+      background:#29364c !important;
+      padding:2px !important;
+      border:none !important;
+      border-radius:40px !important;
+      box-shadow:none !important;
+      overflow:hidden !important;
+    }

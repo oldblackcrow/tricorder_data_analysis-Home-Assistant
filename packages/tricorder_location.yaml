@@ -1,0 +1,35 @@
+input_number:
+  tric_latitude:
+    name: Latitude
+    min: -90
+    max: 90
+    step: 0.000001
+    mode: box
+
+  tric_longitude:
+    name: Longitude
+    min: -180
+    max: 180
+    step: 0.000001
+    mode: box
+
+  # Mission timeline position for the recorded location.
+  tric_location_elapsed:
+    name: Location Mission Elapsed
+    min: -1
+    max: 604800
+    step: 0.1
+    unit_of_measurement: "s"
+    mode: box
+
+
+input_boolean:
+  tric_location_available:
+    name: Location Available
+
+
+input_datetime:
+  tric_location_time:
+    name: Location Time
+    has_date: true
+    has_time: true

@@ -1,0 +1,199 @@
+template:
+  - sensor:
+
+      # ==========================================================
+      # MISSION - READ ONLY
+      # ==========================================================
+
+      - name: Tricorder Mission Event Time
+        unique_id: tricorder_mission_event_time_display
+        state: "{{ states('input_datetime.tric_mission_event_time') }}"
+        icon: mdi:clock-outline
+
+      - name: Tricorder Mission Start Time
+        unique_id: tricorder_mission_start_time_display
+        state: "{{ states('input_datetime.tric_mission_start_time') }}"
+        icon: mdi:flag-outline
+
+      - name: Tricorder Mission End Time
+        unique_id: tricorder_mission_end_time_display
+        state: "{{ states('input_datetime.tric_mission_end_time') }}"
+        icon: mdi:flag-checkered
+
+      - name: Tricorder Mission Name
+        unique_id: tricorder_mission_name_display
+        state: "{{ states('input_text.tric_mission_name') }}"
+        icon: mdi:rocket-launch-outline
+
+      - name: Tricorder Mission Code
+        unique_id: tricorder_mission_code_display
+        state: "{{ states('input_text.tric_mission_code') }}"
+        icon: mdi:identifier
+
+      - name: Tricorder Mission Elapsed
+        unique_id: tricorder_mission_elapsed_display
+        state: "{{ states('input_number.tric_mission_elapsed') | float(0) }}"
+        unit_of_measurement: "s"
+        icon: mdi:timer-outline
+
+      - name: Tricorder Mission Status
+        unique_id: tricorder_mission_status_display
+        state: "{{ states('input_text.tric_mission_status') }}"
+        icon: mdi:check-circle-outline
+
+      - name: Tricorder Mission Last Event
+        unique_id: tricorder_mission_last_event_display
+        state: "{{ states('input_text.tric_mission_last_event') }}"
+        icon: mdi:history
+
+      - name: Tricorder Mission State
+        unique_id: tricorder_mission_state_display
+        state: >
+          {% if is_state('input_boolean.tric_mission_active', 'on') %}
+            ACTIVE
+          {% else %}
+            INACTIVE
+          {% endif %}
+        icon: mdi:record-rec
+
+
+      # ==========================================================
+      # LOCATION - READ ONLY + MAPPABLE ENTITY
+      # ==========================================================
+
+      - name: Tricorder Location Time
+        unique_id: tricorder_location_time_display
+        state: "{{ states('input_datetime.tric_location_time') }}"
+        icon: mdi:clock-outline
+
+      - name: Tricorder Location Mission Elapsed
+        unique_id: tricorder_location_elapsed_display
+        state: "{{ states('input_number.tric_location_elapsed') | float(0) }}"
+        unit_of_measurement: "s"
+        icon: mdi:timer-outline
+
+      - name: Tricorder Latitude
+        unique_id: tricorder_latitude_display
+        state: "{{ states('input_number.tric_latitude') | float(0) }}"
+        unit_of_measurement: "°"
+        icon: mdi:latitude
+
+      - name: Tricorder Longitude
+        unique_id: tricorder_longitude_display
+        state: "{{ states('input_number.tric_longitude') | float(0) }}"
+        unit_of_measurement: "°"
+        icon: mdi:longitude
+
+      - name: Tricorder Location
+        unique_id: tricorder_location_map
+        state: >
+          {% if is_state('input_boolean.tric_location_available', 'on') %}
+            AVAILABLE
+          {% else %}
+            UNAVAILABLE
+          {% endif %}
+        icon: mdi:map-marker
+        attributes:
+          latitude: "{{ states('input_number.tric_latitude') | float(0) }}"
+          longitude: "{{ states('input_number.tric_longitude') | float(0) }}"
+
+
+      # ==========================================================
+      # RADIATION
+      # ==========================================================
+
+      - name: Tricorder Radiation Scan Time
+        unique_id: tricorder_radiation_scan_time_display
+        state: "{{ states('input_datetime.radiation_scan_time') }}"
+        icon: mdi:clock-outline
+
+      - name: Tricorder Radiation Mission Elapsed
+        unique_id: tricorder_radiation_elapsed_display
+        state: "{{ states('input_number.tric_radiation_elapsed') | float(0) }}"
+        unit_of_measurement: "s"
+        icon: mdi:timer-outline
+
+      - name: Tricorder Radiation Status
+        unique_id: tricorder_radiation_status_display
+        state: "{{ states('input_text.radiation_scan_status') }}"
+        icon: mdi:check-circle-outline
+
+
+      # ==========================================================
+      # ATMOSPHERE
+      # ==========================================================
+
+      - name: Tricorder Atmosphere Scan Time
+        unique_id: tricorder_atmosphere_time_display
+        state: "{{ states('input_datetime.tric_atmosphere_time') }}"
+        icon: mdi:clock-outline
+
+      - name: Tricorder Atmosphere Mission Elapsed
+        unique_id: tricorder_atmosphere_elapsed_display
+        state: "{{ states('input_number.tric_atmosphere_elapsed') | float(0) }}"
+        unit_of_measurement: "s"
+        icon: mdi:timer-outline
+
+
+      # ==========================================================
+      # ORIENTATION
+      # ==========================================================
+
+      - name: Tricorder Orientation Scan Time
+        unique_id: tricorder_orientation_time_display
+        state: "{{ states('input_datetime.tric_orientation_time') }}"
+        icon: mdi:clock-outline
+
+      - name: Tricorder Orientation Mission Elapsed
+        unique_id: tricorder_orientation_elapsed_display
+        state: "{{ states('input_number.tric_orientation_elapsed') | float(0) }}"
+        unit_of_measurement: "s"
+        icon: mdi:timer-outline
+
+
+      # ==========================================================
+      # AUDIO
+      # ==========================================================
+
+      - name: Tricorder Audio Scan Time
+        unique_id: tricorder_audio_time_display
+        state: "{{ states('input_datetime.tric_audio_time') }}"
+        icon: mdi:clock-outline
+
+      - name: Tricorder Audio Mission Elapsed
+        unique_id: tricorder_audio_elapsed_display
+        state: "{{ states('input_number.tric_audio_elapsed') | float(0) }}"
+        unit_of_measurement: "s"
+        icon: mdi:timer-outline
+
+
+      # ==========================================================
+      # MAGNETIC
+      # ==========================================================
+
+      - name: Tricorder Magnetic Scan Time
+        unique_id: tricorder_magnetic_time_display
+        state: "{{ states('input_datetime.tric_magnetic_time') }}"
+        icon: mdi:clock-outline
+
+      - name: Tricorder Magnetic Mission Elapsed
+        unique_id: tricorder_magnetic_elapsed_display
+        state: "{{ states('input_number.tric_magnetic_elapsed') | float(0) }}"
+        unit_of_measurement: "s"
+        icon: mdi:timer-outline
+
+
+      # ==========================================================
+      # COLOR
+      # ==========================================================
+
+      - name: Tricorder Color Scan Time
+        unique_id: tricorder_color_time_display
+        state: "{{ states('input_datetime.tric_color_time') }}"
+        icon: mdi:clock-outline
+
+      - name: Tricorder Color Mission Elapsed
+        unique_id: tricorder_color_elapsed_display
+        state: "{{ states('input_number.tric_color_elapsed') | float(0) }}"
+        unit_of_measurement: "s"
+        icon: mdi:timer-outline

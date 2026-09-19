@@ -1,0 +1,364 @@
+type: custom:html-template-card
+ignore_line_breaks: true
+entities:
+- input_number.tric_heading
+- input_number.tric_accel_x
+- input_number.tric_accel_y
+- input_number.tric_accel_z
+- input_datetime.tric_orientation_time
+- sensor.tricorder_mission_scans
+- input_text.tric_archive_mission_id
+content: |
+  {# Use ONLY the selected mission. Do not use the latest live helpers. #} {% set selected_mid = states('input_text.tric_archive_mission_id') | trim %} {% set heading_unit = '°' %} {% set accel_x_unit = 'm/s²' %} {% set accel_y_unit = 'm/s²' %} {% set accel_z_unit = 'm/s²' %}
+  {% set scan_results =
+       state_attr('sensor.tricorder_mission_scans', 'results') or [] %}
+  {% set scan_series = [] %} {% if scan_results and scan_results[0].get('series') %}
+    {% set scan_series = scan_results[0]['series'] %}
+  {% endif %}
+  {% set orient = namespace(columns=[], rows=[]) %} {% for series in scan_series %}
+    {% if series.get('name', '') == 'tricorder_orientation' %}
+      {% set orient.columns = series.get('columns', []) %}
+      {% set orient.rows = series.get('values', []) %}
+    {% endif %}
+  {% endfor %}
+  {# Ignore previous mission data while the HA sensor refreshes. #} {% set mission_rows = namespace(rows=[]) %} {% if selected_mid and 'mission_id' in orient.columns %}
+    {% set mi = orient.columns.index('mission_id') %}
+    {% for row in orient.rows %}
+      {% if row[mi] | string == selected_mid %}
+        {% set mission_rows.rows = mission_rows.rows + [row] %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {# Keep only the most recent contiguous scan in that mission. #} {% set orient_cluster = namespace(rows=[], active=true, last_ts=none) %} {% if mission_rows.rows and 'time' in orient.columns %}
+    {% set ti = orient.columns.index('time') %}
+    {% for row in mission_rows.rows | reverse %}
+      {% if orient_cluster.active %}
+        {% set dt = as_datetime(row[ti], none) %}
+        {% if dt is not none %}
+          {% set ts = as_timestamp(dt) %}
+          {% if orient_cluster.last_ts is none or
+                (orient_cluster.last_ts - ts) <= 2.5 %}
+            {% set orient_cluster.rows = [row] + orient_cluster.rows %}
+            {% set orient_cluster.last_ts = ts %}
+          {% else %}
+            {% set orient_cluster.active = false %}
+          {% endif %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {# A final null telemetry row must not erase valid scan readings. #} {% set vals = namespace(heading=none, x=none, y=none, z=none,
+                          recorded='--') %}
+  {% if orient_cluster.rows and 'time' in orient.columns %}
+    {% set ti = orient.columns.index('time') %}
+    {% for row in orient_cluster.rows %}
+      {% if 'heading_deg' in orient.columns and
+            row[orient.columns.index('heading_deg')] is not none %}
+        {% set vals.heading = row[orient.columns.index('heading_deg')] %}
+      {% endif %}
+      {% if 'accel_x' in orient.columns and
+            row[orient.columns.index('accel_x')] is not none %}
+        {% set vals.x = row[orient.columns.index('accel_x')] %}
+      {% endif %}
+      {% if 'accel_y' in orient.columns and
+            row[orient.columns.index('accel_y')] is not none %}
+        {% set vals.y = row[orient.columns.index('accel_y')] %}
+      {% endif %}
+      {% if 'accel_z' in orient.columns and
+            row[orient.columns.index('accel_z')] is not none %}
+        {% set vals.z = row[orient.columns.index('accel_z')] %}
+      {% endif %}
+      {% set dt = as_datetime(row[ti], none) %}
+      {% if dt is not none %}
+        {% set vals.recorded = dt.strftime('%m/%d/%Y %H:%M:%S') %}
+      {% endif %}
+    {% endfor %}
+  {% endif %} {% set orientation_recorded = vals.recorded %} {% set heading = vals.heading %} {% set accel_x = vals.x %} {% set accel_y = vals.y %} {% set accel_z = vals.z %}
+  {% macro sensor_popup(columns, rows, field, label, unit, color,
+                         recorded, decimals=1) %}
+    {% set ns = namespace(points=[], values=[], first_ts=none, last_ts=none) %}
+
+    {% if field in columns and 'time' in columns %}
+      {% set fi = columns.index(field) %}
+      {% set ti = columns.index('time') %}
+
+      {% for row in rows %}
+        {% if row[fi] is not none %}
+          {% set dt = as_datetime(row[ti]) %}
+          {% if dt %}
+            {% set ts = as_timestamp(dt) %}
+            {% set heading_v = row[columns.index('heading_deg')] if 'heading_deg' in columns else none %}
+            {% set ax_v = row[columns.index('accel_x')] if 'accel_x' in columns else none %}
+            {% set ay_v = row[columns.index('accel_y')] if 'accel_y' in columns else none %}
+            {% set az_v = row[columns.index('accel_z')] if 'accel_z' in columns else none %}
+            {% set mission_v = row[columns.index('elapsed_seconds')] if 'elapsed_seconds' in columns else none %}
+            {% if ns.first_ts is none %}
+              {% set ns.first_ts = ts %}
+            {% endif %}
+            {% set ns.last_ts = ts %}
+            {% set ns.values = ns.values + [row[fi] | float(0)] %}
+            {% set ns.points = ns.points + [{
+              'ts': ts,
+              'value': row[fi] | float(0),
+              'time': dt.strftime('%H:%M:%S'),
+              'mission': mission_v,
+              'heading': heading_v,
+              'ax': ax_v,
+              'ay': ay_v,
+              'az': az_v
+            }] %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+
+    {% set count = ns.points | count %}
+
+    {% if count %}
+      {% set minval = ns.values | min %}
+      {% set maxval = ns.values | max %}
+      {% set avgval = (ns.values | sum) / count %}
+      {% set latest_value = ns.values[-1] %}
+
+      {% if count > 1 %}
+        {% set span = ns.last_ts - ns.first_ts %}
+        {% set duration = (span + 1) | round(0) | int %}
+      {% else %}
+        {% set span = 0 %}
+        {% set duration = 1 %}
+      {% endif %}
+
+      {% set picks = namespace(mini=1, maxi=1, min_found=false, max_found=false) %}
+      {% for p in ns.points %}
+        {% if not picks.min_found and p['value'] == minval %}
+          {% set picks.mini = loop.index %}
+          {% set picks.min_found = true %}
+        {% endif %}
+        {% if not picks.max_found and p['value'] == maxval %}
+          {% set picks.maxi = loop.index %}
+          {% set picks.max_found = true %}
+        {% endif %}
+      {% endfor %}
+
+      {% set graph = namespace(coords=[]) %}
+      {% for p in ns.points %}
+        {% if span <= 0 %}
+          {% set x = 150 %}
+          {% set offset = 0 %}
+        {% else %}
+          {% set x = 14 + (((p['ts'] - ns.first_ts) / span) * 272) %}
+          {% set offset = p['ts'] - ns.first_ts %}
+        {% endif %}
+
+        {% if maxval == minval %}
+          {% set y = 70 %}
+        {% else %}
+          {% set y = 126 - (((p['value'] - minval) /
+                             (maxval - minval)) * 106) %}
+        {% endif %}
+
+        {% set graph.coords = graph.coords + [{
+          'x': x | round(1),
+          'y': y | round(1),
+          'left': ((x / 300) * 100) | round(3),
+          'top': ((y / 150) * 100) | round(3),
+          'offset': offset | round(1),
+          'index': loop.index,
+          'p': p
+        }] %}
+      {% endfor %}
+
+      <div class="ori-popup" style="background:#000;color:#fff;padding:16px;font-family:Antonio,Arial Narrow,sans-serif;box-sizing:border-box;">
+        <style>
+          .ori-radio { position:absolute; opacity:0; pointer-events:none; }
+          .ori-choice { cursor:pointer; }
+          .ori-choice:hover { filter:brightness(1.12); }
+          .ori-selected { display:none; }
+          .ori-selected-empty { display:block; }
+          {% for c in graph.coords %}
+            #{{ field }}-pick-{{ c['index'] }}:checked ~ .ori-selected-wrap .ori-selected-empty { display:none; }
+            #{{ field }}-pick-{{ c['index'] }}:checked ~ .ori-selected-wrap .ori-selected-{{ c['index'] }} { display:block; }
+          {% endfor %}
+        </style>
+
+        {% for c in graph.coords %}
+          <input class="ori-radio" type="radio" name="{{ field }}-pick" id="{{ field }}-pick-{{ c['index'] }}">
+        {% endfor %}
+
+        <div style="height:7px;background:{{ color }};border-radius:8px;margin-bottom:13px;"></div>
+        <div style="text-align:center;font-size:22px;font-weight:900;letter-spacing:1px;">{{ label }}</div>
+        <div style="text-align:center;color:{{ color }};font-size:11px;font-weight:800;letter-spacing:1px;margin:3px 0 14px 0;">{{ duration }} SECOND SCAN</div>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px;">
+          <label class="ori-choice" for="{{ field }}-pick-{{ picks.mini }}" style="background:#111;border-radius:11px;padding:8px;text-align:center;">
+            <div style="font-size:8px;color:#777;">MIN</div>
+            <div style="font-size:15px;font-weight:900;">{{ minval | round(decimals) }} <span style="font-size:8px;color:#aaa;">{{ unit }}</span></div>
+          </label>
+          <div style="background:#111;border-radius:11px;padding:8px;text-align:center;">
+            <div style="font-size:8px;color:#777;">AVG</div>
+            <div style="font-size:15px;font-weight:900;">{{ avgval | round(decimals) }} <span style="font-size:8px;color:#aaa;">{{ unit }}</span></div>
+          </div>
+          <label class="ori-choice" for="{{ field }}-pick-{{ picks.maxi }}" style="background:#111;border-radius:11px;padding:8px;text-align:center;">
+            <div style="font-size:8px;color:#777;">MAX</div>
+            <div style="font-size:15px;font-weight:900;">{{ maxval | round(decimals) }} <span style="font-size:8px;color:#aaa;">{{ unit }}</span></div>
+          </label>
+          <div style="background:#111;border-radius:11px;padding:8px;text-align:center;">
+            <div style="font-size:8px;color:#777;">SAMPLES</div>
+            <div style="font-size:15px;font-weight:900;">{{ count }}</div>
+          </div>
+        </div>
+
+        <div class="ori-selected-wrap" style="background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:9px;margin-bottom:12px;min-height:55px;">
+          <div class="ori-selected-empty" style="text-align:center;color:#777;font-size:10px;font-weight:800;letter-spacing:.7px;padding:17px 0;">TAP A POINT OR SAMPLE TO INSPECT</div>
+          {% for c in graph.coords %}
+            <div class="ori-selected ori-selected-{{ c['index'] }}">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;">
+                <div style="font-size:11px;font-weight:900;color:{{ color }};letter-spacing:.8px;">SAMPLE {{ c['index'] }}</div>
+                <div style="font-size:10px;color:#aaa;">{{ c['p']['time'] }} · +{{ c['offset'] }} s</div>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;">
+                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:7px;color:#666;">HEAD</div><div style="font-size:11px;font-weight:900;">{{ c['p']['heading'] | round(1) if c['p']['heading'] is not none else '--' }}{% if c['p']['heading'] is not none %}°{% endif %}</div></div>
+                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:7px;color:#666;">Ax</div><div style="font-size:11px;font-weight:900;">{{ c['p']['ax'] | round(3) if c['p']['ax'] is not none else '--' }}{% if c['p']['ax'] is not none %} m/s²{% endif %}</div></div>
+                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:7px;color:#666;">Ay</div><div style="font-size:11px;font-weight:900;">{{ c['p']['ay'] | round(3) if c['p']['ay'] is not none else '--' }}{% if c['p']['ay'] is not none %} m/s²{% endif %}</div></div>
+                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:7px;color:#666;">Az</div><div style="font-size:11px;font-weight:900;">{{ c['p']['az'] | round(3) if c['p']['az'] is not none else '--' }}{% if c['p']['az'] is not none %} m/s²{% endif %}</div></div>
+              </div>
+              <div style="text-align:center;color:#777;font-size:8px;margin-top:6px;">MISSION {% if c['p']['mission'] is not none %}{{ c['p']['mission'] | round(1) }} s{% else %}--{% endif %}</div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div style="background:#080808;border:1px solid #222;border-radius:14px;padding:10px;">
+          <div style="position:relative;width:100%;height:260px;">
+            <svg viewBox="0 0 300 150" preserveAspectRatio="none" style="width:100%;height:260px;display:block;position:absolute;inset:0;">
+              <line x1="14" y1="126" x2="286" y2="126" stroke="#333" stroke-width="1"/>
+              <line x1="14" y1="20" x2="14" y2="126" stroke="#333" stroke-width="1"/>
+              {% if count > 1 %}
+                <polyline points="{% for c in graph.coords %}{{ c['x'] }},{{ c['y'] }} {% endfor %}" fill="none" stroke="{{ color }}" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
+              {% endif %}
+              {% for c in graph.coords %}
+                <circle cx="{{ c['x'] }}" cy="{{ c['y'] }}" r="5" fill="{{ color }}"><title>{{ c['p']['time'] }} — {{ c['p']['value'] | round(decimals) }} {{ unit }}</title></circle>
+              {% endfor %}
+            </svg>
+            {% for c in graph.coords %}
+              <label class="ori-choice" for="{{ field }}-pick-{{ c['index'] }}" title="Sample {{ c['index'] }} — {{ c['p']['time'] }} — {{ c['p']['value'] | round(decimals) }} {{ unit }}" style="position:absolute;left:{{ c['left'] }}%;top:{{ c['top'] }}%;width:30px;height:30px;transform:translate(-50%,-50%);border-radius:50%;z-index:3;"></label>
+            {% endfor %}
+          </div>
+          <div style="display:flex;justify-content:space-between;color:#888;font-size:10px;font-weight:800;margin-top:-3px;">
+            <span>0 s</span><span>{{ recorded }}</span><span>{{ duration }} s</span>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:8px;">
+          <div style="font-size:9px;color:#888;font-weight:800;letter-spacing:1px;margin-bottom:5px;">SAMPLE DETAIL</div>
+          {% for c in graph.coords %}
+            <label class="ori-choice" for="{{ field }}-pick-{{ c['index'] }}" style="display:grid;grid-template-columns:44px 1fr 1fr 1fr 1fr;gap:4px;align-items:center;padding:5px 0;border-top:1px solid #181818;font-size:9px;">
+              <div style="color:#888;">{{ c['p']['time'] }}</div>
+              <div><span style="color:#777;">H </span>{{ c['p']['heading'] | round(1) if c['p']['heading'] is not none else '--' }}</div>
+              <div><span style="color:#777;">X </span>{{ c['p']['ax'] | round(3) if c['p']['ax'] is not none else '--' }}</div>
+              <div><span style="color:#777;">Y </span>{{ c['p']['ay'] | round(3) if c['p']['ay'] is not none else '--' }}</div>
+              <div><span style="color:#777;">Z </span>{{ c['p']['az'] | round(3) if c['p']['az'] is not none else '--' }}</div>
+            </label>
+          {% endfor %}
+        </div>
+
+        <label class="ori-choice" for="{{ field }}-pick-{{ count }}" style="display:block;margin-top:10px;text-align:center;font-size:11px;color:#888;">LAST {{ latest_value | round(decimals) }} {{ unit }}</label>
+        <div style="height:7px;background:{{ color }};border-radius:8px;margin-top:13px;"></div>
+      </div>
+    {% else %}
+      <div style="background:#000;color:#fff;padding:22px;font-family:Antonio,Arial Narrow,sans-serif;text-align:center;">
+        <div style="font-size:20px;font-weight:900;">{{ label }}</div>
+        <div style="color:#888;margin-top:12px;">No time-series samples found for this scan.</div>
+      </div>
+    {% endif %}
+  {% endmacro %}
+  {% set heading_popup = sensor_popup(
+    orient.columns, orient_cluster.rows,
+    'heading_deg','HEADING','°','#8296ff',
+    orientation_recorded,1) %}
+
+  {% set accel_x_popup = sensor_popup(
+    orient.columns, orient_cluster.rows,
+    'accel_x','ACCELERATION X','m/s²','#ef4444',
+    orientation_recorded,3) %}
+
+  {% set accel_y_popup = sensor_popup(
+    orient.columns, orient_cluster.rows,
+    'accel_y','ACCELERATION Y','m/s²','#22c55e',
+    orientation_recorded,3) %}
+
+  {% set accel_z_popup = sensor_popup(
+    orient.columns, orient_cluster.rows,
+    'accel_z','ACCELERATION Z','m/s²','#3b82f6',
+    orientation_recorded,3) %}
+
+  <style>
+    .env-card {
+      background:#000;
+      border:0;
+      border-radius:38px;
+      padding:10px 18px;
+      overflow:hidden;
+      font-family:"Antonio","Arial Narrow",sans-serif;
+      box-sizing:border-box;
+    }
+    .env-topline {height:7px;background:#8296ff;margin:-5px -18px 10px -18px;}
+    .env-bottomline {height:7px;background:#8e87b6;margin:10px -18px -5px -18px;}
+    .env-title {color:#fff;text-align:center;font-size:18px;font-weight:800;letter-spacing:1px;margin:0 0 7px 0;}
+    .env-row {display:grid;height:30px;margin:4px 0;cursor:pointer;user-select:none;}
+    .env-row:hover {filter:brightness(1.08);}
+    .env-row.left {grid-template-columns:52px 1fr 1.75fr;}
+    .env-row.right {grid-template-columns:1.75fr 1fr 52px;}
+    .env-cap {color:#000;display:flex;align-items:center;justify-content:center;}
+    .leftcap {border-radius:15px 0 0 15px;}
+    .rightcap {border-radius:0 15px 15px 0;}
+    .env-value {background:#000;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:17px;font-weight:800;white-space:nowrap;padding:0 4px;}
+    .unit {font-size:9px;font-weight:600;margin-left:3px;}
+    .env-label {color:#000;display:flex;align-items:center;justify-content:center;text-align:center;font-size:9px;font-weight:800;padding:0 6px;}
+    .round-right {border-radius:0 15px 15px 0;}
+    .round-left {border-radius:15px 0 0 15px;}
+    ha-icon {--mdc-icon-size:16px;}
+  </style>
+  <div class="env-card">
+    <div class="env-topline"></div>
+    <div class="env-title">ORIENTATION</div>
+
+    <div class="env-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"HEADING SCAN",content:{{ heading_popup | to_json }},initial_style:"normal"}}}}))'>
+      <div class="env-cap leftcap" style="background:#8296ff;"><ha-icon icon="mdi:compass-outline"></ha-icon></div>
+      <div class="env-value">{% if heading is not none %}{{ '%.1f' | format(heading | float) }}<span class="unit">{{ heading_unit }}</span>{% else %}--{% endif %}</div>
+      <div class="env-label round-right" style="background:#8296ff;">HEADING</div>
+    </div>
+
+    <div class="env-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"ACCELERATION X SCAN",content:{{ accel_x_popup | to_json }},initial_style:"normal"}}}}))'>
+      <div class="env-cap leftcap" style="background:#ef4444;"><ha-icon icon="mdi:axis-x-arrow"></ha-icon></div>
+      <div class="env-value">{% if accel_x is not none %}{{ '%.3f' | format(accel_x | float) }}<span class="unit">{{ accel_x_unit }}</span>{% else %}--{% endif %}</div>
+      <div class="env-label round-right" style="background:#ef4444;">ACCELERATION X</div>
+    </div>
+
+    <div class="env-row right"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"ACCELERATION Y SCAN",content:{{ accel_y_popup | to_json }},initial_style:"normal"}}}}))'>
+      <div class="env-label round-left" style="background:#22c55e;">ACCELERATION Y</div>
+      <div class="env-value">{% if accel_y is not none %}{{ '%.3f' | format(accel_y | float) }}<span class="unit">{{ accel_y_unit }}</span>{% else %}--{% endif %}</div>
+      <div class="env-cap rightcap" style="background:#22c55e;"><ha-icon icon="mdi:axis-y-arrow"></ha-icon></div>
+    </div>
+
+    <div class="env-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"ACCELERATION Z SCAN",content:{{ accel_z_popup | to_json }},initial_style:"normal"}}}}))'>
+      <div class="env-cap leftcap" style="background:#3b82f6;"><ha-icon icon="mdi:axis-z-arrow"></ha-icon></div>
+      <div class="env-value">{% if accel_z is not none %}{{ '%.3f' | format(accel_z | float) }}<span class="unit">{{ accel_z_unit }}</span>{% else %}--{% endif %}</div>
+      <div class="env-label round-right" style="background:#3b82f6;">ACCELERATION Z</div>
+    </div>
+
+    <div class="env-bottomline"></div>
+  </div>
+card_mod:
+  style: |
+    ha-card {
+      background:#29364c !important;
+      padding:2px !important;
+      border:none !important;
+      border-radius:40px !important;
+      box-shadow:none !important;
+      overflow:hidden !important;
+    }

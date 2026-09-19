@@ -1,0 +1,1020 @@
+type: custom:html-template-card
+ignore_line_breaks: true
+entities:
+- sensor.tricorder_mission_catalog
+- input_text.tric_archive_mission_id
+- input_text.tric_archive_compare_mission_id
+- sensor.tricorder_mission_scans
+- sensor.tricorder_comparison_mission_scans
+content: |
+  {% set aid = states('input_text.tric_archive_mission_id') %} {% set bid = states('input_text.tric_archive_compare_mission_id') %}
+  {# ======================================================== #} {# CATALOG                                                  #} {# ======================================================== #}
+  {% set cr =
+       state_attr('sensor.tricorder_mission_catalog','results') or [] %}
+
+  {% set cc = [] %} {% set cv = [] %}
+  {% if cr and cr[0].get('series') %}
+    {% set cc = cr[0]['series'][0].get('columns',[]) %}
+    {% set cv = cr[0]['series'][0].get('values',[]) %}
+  {% endif %}
+  {% set ma = namespace(code='MISSION A', name='UNKNOWN', time='') %} {% set mb = namespace(code='MISSION B', name='NOT SELECTED', time='') %}
+  {% if cv %}
+    {% set ci = cc.index('mission_code') %}
+    {% set ii = cc.index('mission_id') %}
+    {% set ni = cc.index('mission_name') %}
+    {% set ti = cc.index('time') %}
+
+    {% for row in cv %}
+      {% if row[ii] == aid %}
+        {% set ma.code = row[ci] %}
+        {% set ma.name = row[ni] | replace('_',' ') %}
+        {% set ma.time = row[ti] %}
+      {% endif %}
+
+      {% if row[ii] == bid %}
+        {% set mb.code = row[ci] %}
+        {% set mb.name = row[ni] | replace('_',' ') %}
+        {% set mb.time = row[ti] %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+
+  {# ======================================================== #} {# SCAN SERIES                                              #} {# ======================================================== #}
+  {% set ar =
+       state_attr('sensor.tricorder_mission_scans','results') or [] %}
+
+  {% set br =
+       state_attr('sensor.tricorder_comparison_mission_scans','results') or [] %}
+
+  {% set aseries = [] %} {% set bseries = [] %}
+  {% if ar and ar[0].get('series') %}
+    {% set aseries = ar[0]['series'] %}
+  {% endif %}
+  {% if br and br[0].get('series') %}
+    {% set bseries = br[0]['series'] %}
+  {% endif %}
+
+  {# ======================================================== #} {# COMPARISON MACRO                                         #} {# ======================================================== #}
+  {% macro compare(measurement, field, label, unit, decimals=1) %}
+
+    {% set sa = namespace(columns=[],rows=[]) %}
+    {% set sb = namespace(columns=[],rows=[]) %}
+
+    {% for s in aseries %}
+      {% if s.get('name','') == measurement %}
+        {% set sa.columns = s.get('columns',[]) %}
+        {% set sa.rows = s.get('values',[]) %}
+      {% endif %}
+    {% endfor %}
+
+    {% for s in bseries %}
+      {% if s.get('name','') == measurement %}
+        {% set sb.columns = s.get('columns',[]) %}
+        {% set sb.rows = s.get('values',[]) %}
+      {% endif %}
+    {% endfor %}
+
+
+    {% set pa = namespace(points=[]) %}
+    {% set pb = namespace(points=[]) %}
+
+
+    {% if field in sa.columns and 'elapsed_seconds' in sa.columns %}
+
+      {% set afi = sa.columns.index(field) %}
+      {% set aei = sa.columns.index('elapsed_seconds') %}
+
+      {% for row in sa.rows %}
+        {% if row[afi] is not none %}
+          {% set pa.points =
+            pa.points + [{
+              'elapsed':row[aei]|float(0),
+              'value':row[afi]|float(0)
+            }] %}
+        {% endif %}
+      {% endfor %}
+
+    {% endif %}
+
+
+    {% if field in sb.columns and 'elapsed_seconds' in sb.columns %}
+
+      {% set bfi = sb.columns.index(field) %}
+      {% set bei = sb.columns.index('elapsed_seconds') %}
+
+      {% for row in sb.rows %}
+        {% if row[bfi] is not none %}
+          {% set pb.points =
+            pb.points + [{
+              'elapsed':row[bei]|float(0),
+              'value':row[bfi]|float(0)
+            }] %}
+        {% endif %}
+      {% endfor %}
+
+    {% endif %}
+
+
+    {% if pa.points and pb.points %}
+
+      {% set av =
+        pa.points | map(attribute='value') | list %}
+
+      {% set bv =
+        pb.points | map(attribute='value') | list %}
+
+      {% set ae =
+        pa.points | map(attribute='elapsed') | list %}
+
+      {% set be =
+        pb.points | map(attribute='elapsed') | list %}
+
+      {% set aavg = (av|sum)/(av|count) %}
+      {% set bavg = (bv|sum)/(bv|count) %}
+      {% set delta = bavg - aavg %}
+
+      {% set allv = av + bv %}
+      {% set alle = ae + be %}
+
+      {% set minv = allv|min %}
+      {% set maxv = allv|max %}
+      {% set maxe = alle|max %}
+
+      {% set ga = namespace(coords=[],points=[]) %}
+      {% set gb = namespace(coords=[],points=[]) %}
+
+
+      {% for p in pa.points %}
+
+        {% if maxe > 0 %}
+          {% set x = 10 + (p.elapsed/maxe*280) %}
+        {% else %}
+          {% set x = 150 %}
+        {% endif %}
+
+        {% if maxv == minv %}
+          {% set y = 35 %}
+        {% else %}
+          {% set y =
+            60 - ((p.value-minv)/(maxv-minv)*50) %}
+        {% endif %}
+
+        {% set ga.coords =
+          ga.coords + [
+            (x|round(1)|string) ~ ',' ~
+            (y|round(1)|string)
+          ] %}
+
+        {% set ga.points =
+          ga.points + [{'x':x,'y':y}] %}
+
+      {% endfor %}
+
+
+      {% for p in pb.points %}
+
+        {% if maxe > 0 %}
+          {% set x = 10 + (p.elapsed/maxe*280) %}
+        {% else %}
+          {% set x = 150 %}
+        {% endif %}
+
+        {% if maxv == minv %}
+          {% set y = 35 %}
+        {% else %}
+          {% set y =
+            60 - ((p.value-minv)/(maxv-minv)*50) %}
+        {% endif %}
+
+        {% set gb.coords =
+          gb.coords + [
+            (x|round(1)|string) ~ ',' ~
+            (y|round(1)|string)
+          ] %}
+
+        {% set gb.points =
+          gb.points + [{'x':x,'y':y}] %}
+
+      {% endfor %}
+
+
+      {% set popup_html %}
+
+        <div style="
+          background:#000;
+          color:#fff;
+          padding:16px;
+          font-family:Arial,sans-serif;
+        ">
+
+          <div style="
+            font-size:20px;
+            font-weight:800;
+          ">
+            {{ label }} COMPARISON
+          </div>
+
+          <div style="
+            margin-top:4px;
+            margin-bottom:14px;
+            font-size:12px;
+          ">
+
+            <span style="color:#8296ff;">
+              A · {{ ma.code }}
+            </span>
+
+            &nbsp;&nbsp;vs&nbsp;&nbsp;
+
+            <span style="color:#f59e0b;">
+              B · {{ mb.code }}
+            </span>
+
+          </div>
+
+
+          <div style="
+            display:grid;
+            grid-template-columns:1fr 1fr 1fr;
+            gap:6px;
+            margin-bottom:12px;
+          ">
+
+            <div style="
+              background:#111;
+              border-radius:12px;
+              padding:9px;
+            ">
+              <div style="font-size:9px;color:#8296ff;">
+                MISSION A AVG
+              </div>
+
+              <div style="font-size:18px;font-weight:800;">
+                {{ aavg|round(decimals) }} {{ unit }}
+              </div>
+
+              <div style="font-size:9px;color:#777;">
+                {{ av|count }} samples
+              </div>
+            </div>
+
+
+            <div style="
+              background:#111;
+              border-radius:12px;
+              padding:9px;
+            ">
+              <div style="font-size:9px;color:#f59e0b;">
+                MISSION B AVG
+              </div>
+
+              <div style="font-size:18px;font-weight:800;">
+                {{ bavg|round(decimals) }} {{ unit }}
+              </div>
+
+              <div style="font-size:9px;color:#777;">
+                {{ bv|count }} samples
+              </div>
+            </div>
+
+
+            <div style="
+              background:#111;
+              border-radius:12px;
+              padding:9px;
+            ">
+              <div style="font-size:9px;color:#aaa;">
+                Δ B − A
+              </div>
+
+              <div style="font-size:18px;font-weight:800;">
+                {% if delta > 0 %}+{% endif %}
+                {{ delta|round(decimals) }}
+                {{ unit }}
+              </div>
+            </div>
+
+          </div>
+
+
+          <div style="
+            border:1px solid #222;
+            border-radius:12px;
+            padding:8px;
+            background:#080808;
+          ">
+
+            <svg
+              viewBox="0 0 300 70"
+              style="width:100%;height:180px;"
+            >
+
+              <line
+                x1="10"
+                y1="60"
+                x2="290"
+                y2="60"
+                stroke="#333"
+              />
+
+              {% if ga.points|count == 1 and gb.points|count == 1 %}
+                {% if maxv == minv %}
+                  {% set ay = 35 %}
+                  {% set by = 35 %}
+                {% else %}
+                  {% set ay = 60 - ((aavg-minv)/(maxv-minv)*50) %}
+                  {% set by = 60 - ((bavg-minv)/(maxv-minv)*50) %}
+                {% endif %}
+
+                <line
+                  x1="55"
+                  y1="{{ ay }}"
+                  x2="245"
+                  y2="{{ by }}"
+                  stroke="#666"
+                  stroke-width="2.5"
+                />
+
+                <circle cx="55" cy="{{ ay }}" r="4" fill="#8296ff" />
+                <circle cx="245" cy="{{ by }}" r="4" fill="#f59e0b" />
+
+              {% else %}
+
+                {% if ga.points|count > 1 %}
+                  <polyline
+                    points="{{ ga.coords|join(' ') }}"
+                    fill="none"
+                    stroke="#8296ff"
+                    stroke-width="2.5"
+                  />
+                {% endif %}
+
+                {% for p in ga.points %}
+                  <circle
+                    cx="{{ p.x }}"
+                    cy="{{ p.y }}"
+                    r="3"
+                    fill="#8296ff"
+                  />
+                {% endfor %}
+
+                {% if gb.points|count > 1 %}
+                  <polyline
+                    points="{{ gb.coords|join(' ') }}"
+                    fill="none"
+                    stroke="#f59e0b"
+                    stroke-width="2.5"
+                  />
+                {% endif %}
+
+                {% for p in gb.points %}
+                  <circle
+                    cx="{{ p.x }}"
+                    cy="{{ p.y }}"
+                    r="3"
+                    fill="#f59e0b"
+                  />
+                {% endfor %}
+
+              {% endif %}
+
+            </svg>
+
+          </div>
+
+
+          <div style="
+            display:flex;
+            justify-content:center;
+            gap:25px;
+            margin-top:10px;
+            font-size:11px;
+          ">
+
+            <span style="color:#8296ff;">
+              ● A · {{ ma.code }}
+            </span>
+
+            <span style="color:#f59e0b;">
+              ● B · {{ mb.code }}
+            </span>
+
+          </div>
+
+        </div>
+
+      {% endset %}
+
+
+      <div
+        class="cmp-row"
+        onclick='this.dispatchEvent(
+          new CustomEvent(
+            "ll-custom",
+            {
+              bubbles:true,
+              composed:true,
+              detail:{
+                browser_mod:{
+                  service:"browser_mod.popup",
+                  data:{
+                    title:{{ (label ~ " COMPARISON")|to_json }},
+                    content:{{ popup_html|to_json }},
+                    initial_style:"normal"
+                  }
+                }
+              }
+            }
+          )
+        )'
+      >
+
+        <div class="cmp-label">
+          {{ label }}
+        </div>
+
+        <div class="cmp-a">
+          <span>A</span>
+          {{ aavg|round(decimals) }}
+          <small>{{ unit }}</small>
+        </div>
+
+        <div class="cmp-b">
+          <span>B</span>
+          {{ bavg|round(decimals) }}
+          <small>{{ unit }}</small>
+        </div>
+
+        <div class="cmp-delta">
+          {% if delta > 0 %}+{% endif %}
+          {{ delta|round(decimals) }}
+        </div>
+
+        <div class="cmp-graph">
+
+          <svg
+            viewBox="0 0 300 70"
+            preserveAspectRatio="none"
+          >
+
+            {% if ga.points|count == 1 and gb.points|count == 1 %}
+              {% if maxv == minv %}
+                {% set ay = 35 %}
+                {% set by = 35 %}
+              {% else %}
+                {% set ay = 60 - ((aavg-minv)/(maxv-minv)*50) %}
+                {% set by = 60 - ((bavg-minv)/(maxv-minv)*50) %}
+              {% endif %}
+
+              <line
+                x1="55"
+                y1="{{ ay }}"
+                x2="245"
+                y2="{{ by }}"
+                stroke="#666"
+                stroke-width="3"
+                vector-effect="non-scaling-stroke"
+              />
+
+              <circle cx="55" cy="{{ ay }}" r="4" fill="#8296ff" />
+              <circle cx="245" cy="{{ by }}" r="4" fill="#f59e0b" />
+
+            {% else %}
+
+              {% if ga.points|count > 1 %}
+                <polyline
+                  points="{{ ga.coords|join(' ') }}"
+                  fill="none"
+                  stroke="#8296ff"
+                  stroke-width="3"
+                  vector-effect="non-scaling-stroke"
+                />
+              {% endif %}
+
+              {% for p in ga.points %}
+                <circle
+                  cx="{{ p.x }}"
+                  cy="{{ p.y }}"
+                  r="4"
+                  fill="#8296ff"
+                />
+              {% endfor %}
+
+              {% if gb.points|count > 1 %}
+                <polyline
+                  points="{{ gb.coords|join(' ') }}"
+                  fill="none"
+                  stroke="#f59e0b"
+                  stroke-width="3"
+                  vector-effect="non-scaling-stroke"
+                />
+              {% endif %}
+
+              {% for p in gb.points %}
+                <circle
+                  cx="{{ p.x }}"
+                  cy="{{ p.y }}"
+                  r="4"
+                  fill="#f59e0b"
+                />
+              {% endfor %}
+
+            {% endif %}
+
+          </svg>
+
+        </div>
+
+      </div>
+
+    {% endif %}
+
+  {% endmacro %}
+
+  <style>
+
+    .comparison-card {
+      background:#000;
+      border-radius:38px;
+      padding:10px 18px;
+      overflow:hidden;
+      font-family:"Antonio","Arial Narrow",sans-serif;
+      box-sizing:border-box;
+    }
+
+    .topline {
+      height:7px;
+      background:#8296ff;
+      margin:-5px -18px 9px -18px;
+    }
+
+    .bottomline {
+      height:7px;
+      background:#f59e0b;
+      margin:10px -18px -5px -18px;
+    }
+
+    .title {
+      color:white;
+      text-align:center;
+      font-size:18px;
+      font-weight:800;
+      letter-spacing:1.2px;
+    }
+
+    .versus {
+      display:grid;
+      grid-template-columns:1fr 38px 1fr;
+      gap:5px;
+      margin:9px 0;
+    }
+
+    .mission-box {
+      background:#111;
+      border-radius:14px;
+      padding:7px 9px;
+      text-align:center;
+    }
+
+    .mission-box.a {
+      border:1px solid #8296ff;
+    }
+
+    .mission-box.b {
+      border:1px solid #f59e0b;
+    }
+
+    .mission-letter {
+      font-size:8px;
+      font-weight:900;
+    }
+
+    .a .mission-letter {
+      color:#8296ff;
+    }
+
+    .b .mission-letter {
+      color:#f59e0b;
+    }
+
+    .mission-code {
+      color:#fff;
+      font-size:13px;
+      font-weight:900;
+    }
+
+    .mission-name {
+      color:#777;
+      font-size:11px;
+    }
+
+    .mission-time {
+      color:#aaa;
+      font-size:11px;
+      margin-top:2px;
+    }
+
+    .vs {
+      color:#aaa;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:900;
+      font-size:11px;
+    }
+
+    .section {
+      color:#888;
+      font-size:9px;
+      font-weight:800;
+      letter-spacing:1px;
+      margin:9px 0 4px;
+    }
+
+    .select-row {
+      height:31px;
+      display:grid;
+      grid-template-columns:85px 1fr 92px;
+      margin:4px 0;
+      border-radius:16px;
+      overflow:hidden;
+      cursor:pointer;
+      background:#111;
+    }
+
+    .select-row.selected {
+      outline:1px solid #f59e0b;
+      box-shadow:0 0 6px #f59e0b55;
+    }
+
+    .select-code {
+      background:#f59e0b;
+      color:#000;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:11px;
+      font-weight:900;
+    }
+
+    .select-name {
+      color:white;
+      display:flex;
+      align-items:center;
+      padding-left:9px;
+      font-size:14px;
+      font-weight:800;
+    }
+
+    .select-time {
+      color:#aaa;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:11px;
+      font-weight:700;
+      border-left:1px solid #222;
+    }
+
+    .cmp-row {
+      display:grid;
+      grid-template-columns:95px 72px 72px 60px 1fr;
+      height:45px;
+      margin:5px 0;
+      border-radius:17px;
+      overflow:hidden;
+      background:#090909;
+      cursor:pointer;
+    }
+
+    .cmp-label {
+      background:#333;
+      color:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:9px;
+      font-weight:900;
+    }
+
+    .cmp-a,
+    .cmp-b,
+    .cmp-delta {
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:3px;
+      color:white;
+      font-size:13px;
+      font-weight:900;
+    }
+
+    .cmp-a span {
+      color:#8296ff;
+      font-size:8px;
+    }
+
+    .cmp-b span {
+      color:#f59e0b;
+      font-size:8px;
+    }
+
+    .cmp-a small,
+    .cmp-b small {
+      color:#777;
+      font-size:7px;
+    }
+
+    .cmp-delta {
+      color:#aaa;
+      font-size:10px;
+      border-left:1px solid #222;
+    }
+
+    .cmp-graph {
+      padding:3px 5px;
+      background:#050505;
+    }
+
+    .cmp-graph svg {
+      width:100%;
+      height:39px;
+      display:block;
+    }
+
+    .empty {
+      color:#777;
+      text-align:center;
+      padding:14px;
+      font-size:11px;
+    }
+
+  </style>
+
+  <div class="comparison-card">
+
+    <div class="topline"></div>
+
+    <div class="title">
+      MISSION COMPARISON
+    </div>
+
+
+    <div class="versus">
+
+      <div class="mission-box a">
+        <div class="mission-letter">
+          MISSION A
+        </div>
+
+        <div class="mission-code">
+          {{ ma.code }}
+        </div>
+
+        <div class="mission-name">
+          {{ ma.name }}
+        </div>
+
+        <div class="mission-time">
+          {% if ma.time %}
+            {{ ma.time[5:10] | replace('-', '/') }} · {{ ma.time[11:16] }}
+          {% endif %}
+        </div>
+      </div>
+
+
+      <div class="vs">
+        VS
+      </div>
+
+
+      <div class="mission-box b">
+
+        <div class="mission-letter">
+          MISSION B
+        </div>
+
+        <div class="mission-code">
+          {{ mb.code }}
+        </div>
+
+        <div class="mission-name">
+          {{ mb.name }}
+        </div>
+
+        <div class="mission-time">
+          {% if mb.time %}
+            {{ mb.time[5:10] | replace('-', '/') }} · {{ mb.time[11:16] }}
+          {% endif %}
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <div class="section">
+      SELECT REFERENCE MISSION B
+    </div>
+
+
+    {% if cv %}
+
+      {% for row in cv %}
+
+        {% set code = row[cc.index('mission_code')] %}
+        {% set mid = row[cc.index('mission_id')] %}
+        {% set name =
+          row[cc.index('mission_name')]
+          | replace('_',' ') %}
+        {% set stamp = row[cc.index('time')] %}
+
+        {% if mid != aid %}
+
+          <div
+            class="select-row {% if mid == bid %}selected{% endif %}"
+            onclick='document.querySelector("home-assistant").hass.callService(
+              "input_text",
+              "set_value",
+              {
+                entity_id:"input_text.tric_archive_compare_mission_id",
+                value:{{ mid|to_json }}
+              }
+            );'
+          >
+
+            <div class="select-code">
+              {{ code }}
+            </div>
+
+            <div class="select-name">
+              {{ name }}
+            </div>
+
+            <div class="select-time">
+              {{ stamp[5:10] | replace('-', '/') }} · {{ stamp[11:16] }}
+            </div>
+
+          </div>
+
+        {% endif %}
+
+      {% endfor %}
+
+    {% endif %}
+
+
+    {% if bid not in ['','unknown','unavailable']
+          and bid != aid
+          and bseries %}
+
+      <div class="section">
+        ATMOSPHERIC COMPARISON
+      </div>
+
+      {{ compare(
+        'tricorder_atmosphere',
+        'temperature_f',
+        'TEMPERATURE',
+        '°F',
+        1
+      ) }}
+
+      {{ compare(
+        'tricorder_atmosphere',
+        'humidity_percent',
+        'HUMIDITY',
+        '%',
+        1
+      ) }}
+
+      {{ compare(
+        'tricorder_atmosphere',
+        'pressure_hpa',
+        'PRESSURE',
+        'hPa',
+        1
+      ) }}
+
+      {{ compare(
+        'tricorder_atmosphere',
+        'eco2_ppm',
+        'eCO₂',
+        'ppm',
+        0
+      ) }}
+
+      {{ compare(
+        'tricorder_atmosphere',
+        'tvoc_ppb',
+        'TVOC',
+        'ppb',
+        0
+      ) }}
+
+
+      <div class="section">
+        RADIATION COMPARISON
+      </div>
+
+      {{ compare(
+        'tricorder_radiation',
+        'cpm',
+        'CPM',
+        'CPM',
+        1
+      ) }}
+
+      {{ compare(
+        'tricorder_radiation',
+        'dose_usvh',
+        'DOSE',
+        'µSv/h',
+        3
+      ) }}
+
+
+      <div class="section">
+        THERMAL COMPARISON
+      </div>
+
+      {{ compare(
+        'tricorder_thermal',
+        'center_f',
+        'THERMAL CENTER',
+        '°F',
+        1
+      ) }}
+
+      {{ compare(
+        'tricorder_thermal',
+        'min_f',
+        'THERMAL MIN',
+        '°F',
+        1
+      ) }}
+
+      {{ compare(
+        'tricorder_thermal',
+        'max_f',
+        'THERMAL MAX',
+        '°F',
+        1
+      ) }}
+
+
+      <div class="section">
+        DISTANCE COMPARISON
+      </div>
+
+      {{ compare(
+        'tricorder_distance',
+        'distance_m',
+        'LIDAR DISTANCE',
+        'm',
+        2
+      ) }}
+
+
+      <div class="section">
+        ULTRAVIOLET COMPARISON
+      </div>
+
+      {{ compare(
+        'tricorder_uv',
+        'uv_index',
+        'UV INDEX',
+        '',
+        2
+      ) }}
+
+      {{ compare(
+        'tricorder_uv',
+        'uv_raw',
+        'UV RAW',
+        '',
+        0
+      ) }}
+
+    {% else %}
+
+      <div class="empty">
+        SELECT A REFERENCE MISSION ABOVE
+      </div>
+
+    {% endif %}
+
+
+    <div class="bottomline"></div>
+
+  </div>
+card_mod:
+  style: |
+    ha-card {
+      background: #29364c !important;
+      padding: 2px !important;
+      border: none !important;
+      border-radius: 40px !important;
+      box-shadow: none !important;
+      overflow: hidden !important;
+    }

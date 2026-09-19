@@ -1,0 +1,219 @@
+# ============================================================
+# TRICORDER EXTENDED SCANS
+# Thermal Camera / LIDAR Distance / UV
+# ============================================================
+
+
+# ============================================================
+# SENSOR AVAILABILITY
+# ============================================================
+input_boolean:
+
+  tric_thermal_available:
+    name: Tricorder Thermal Camera Available
+
+  tric_distance_available:
+    name: Tricorder LIDAR Available
+
+  tric_uv_available:
+    name: Tricorder UV Sensor Available
+
+
+# ============================================================
+# MEASUREMENTS
+# ============================================================
+input_number:
+
+  # ----------------------------------------------------------
+  # THERMAL CAMERA
+  # Stored/displayed in Fahrenheit in Home Assistant.
+  # InfluxDB will retain both Celsius and Fahrenheit.
+  # ----------------------------------------------------------
+  tric_thermal_center:
+    name: Tricorder Thermal Center
+    min: -100
+    max: 1000
+    step: 0.1
+    unit_of_measurement: "°F"
+    mode: box
+
+  tric_thermal_min:
+    name: Tricorder Thermal Minimum
+    min: -100
+    max: 1000
+    step: 0.1
+    unit_of_measurement: "°F"
+    mode: box
+
+  tric_thermal_max:
+    name: Tricorder Thermal Maximum
+    min: -100
+    max: 1000
+    step: 0.1
+    unit_of_measurement: "°F"
+    mode: box
+
+  tric_thermal_elapsed:
+    name: Thermal Mission Elapsed
+    min: -1
+    max: 604800
+    step: 0.1
+    unit_of_measurement: "s"
+    mode: box
+
+
+  # ----------------------------------------------------------
+  # LIDAR
+  # ----------------------------------------------------------
+  tric_distance:
+    name: Tricorder Distance
+    min: 0
+    max: 1000
+    step: 0.01
+    unit_of_measurement: "m"
+    mode: box
+
+  tric_distance_elapsed:
+    name: Distance Mission Elapsed
+    min: -1
+    max: 604800
+    step: 0.1
+    unit_of_measurement: "s"
+    mode: box
+
+
+  # ----------------------------------------------------------
+  # UV
+  # ----------------------------------------------------------
+  tric_uv_raw:
+    name: Tricorder UV Raw
+    min: 0
+    max: 1000000
+    step: 1
+    mode: box
+
+  tric_uv_index:
+    name: Tricorder UV Index
+    min: 0
+    max: 30
+    step: 0.01
+    mode: box
+
+  tric_uv_elapsed:
+    name: UV Mission Elapsed
+    min: -1
+    max: 604800
+    step: 0.1
+    unit_of_measurement: "s"
+    mode: box
+
+
+# ============================================================
+# INDIVIDUAL SCAN TIMESTAMPS
+# ============================================================
+input_datetime:
+
+  tric_thermal_time:
+    name: Thermal Scan Time
+    has_date: true
+    has_time: true
+
+  tric_distance_time:
+    name: Distance Scan Time
+    has_date: true
+    has_time: true
+
+  tric_uv_time:
+    name: UV Scan Time
+    has_date: true
+    has_time: true
+
+
+# ============================================================
+# FRIENDLY READ-ONLY TEMPLATE SENSORS
+#
+# "N/A" while the physical sensor was not available.
+# ============================================================
+template:
+
+  - sensor:
+
+      - name: Tricorder Thermal Center
+        unique_id: tricorder_thermal_center
+        state: >-
+          {% if is_state('input_boolean.tric_thermal_available', 'on') %}
+            {{ states('input_number.tric_thermal_center') }}
+          {% else %}
+            N/A
+          {% endif %}
+
+      - name: Tricorder Thermal Minimum
+        unique_id: tricorder_thermal_minimum
+        state: >-
+          {% if is_state('input_boolean.tric_thermal_available', 'on') %}
+            {{ states('input_number.tric_thermal_min') }}
+          {% else %}
+            N/A
+          {% endif %}
+
+      - name: Tricorder Thermal Maximum
+        unique_id: tricorder_thermal_maximum
+        state: >-
+          {% if is_state('input_boolean.tric_thermal_available', 'on') %}
+            {{ states('input_number.tric_thermal_max') }}
+          {% else %}
+            N/A
+          {% endif %}
+
+      - name: Tricorder Thermal Scan Time
+        unique_id: tricorder_thermal_scan_time
+        state: "{{ states('input_datetime.tric_thermal_time') }}"
+
+      - name: Tricorder Thermal Mission Elapsed
+        unique_id: tricorder_thermal_mission_elapsed
+        state: "{{ states('input_number.tric_thermal_elapsed') }}"
+
+
+      - name: Tricorder Distance
+        unique_id: tricorder_distance
+        state: >-
+          {% if is_state('input_boolean.tric_distance_available', 'on') %}
+            {{ states('input_number.tric_distance') }}
+          {% else %}
+            N/A
+          {% endif %}
+
+      - name: Tricorder Distance Scan Time
+        unique_id: tricorder_distance_scan_time
+        state: "{{ states('input_datetime.tric_distance_time') }}"
+
+      - name: Tricorder Distance Mission Elapsed
+        unique_id: tricorder_distance_mission_elapsed
+        state: "{{ states('input_number.tric_distance_elapsed') }}"
+
+
+      - name: Tricorder UV Raw
+        unique_id: tricorder_uv_raw
+        state: >-
+          {% if is_state('input_boolean.tric_uv_available', 'on') %}
+            {{ states('input_number.tric_uv_raw') }}
+          {% else %}
+            N/A
+          {% endif %}
+
+      - name: Tricorder UV Index
+        unique_id: tricorder_uv_index
+        state: >-
+          {% if is_state('input_boolean.tric_uv_available', 'on') %}
+            {{ states('input_number.tric_uv_index') }}
+          {% else %}
+            N/A
+          {% endif %}
+
+      - name: Tricorder UV Scan Time
+        unique_id: tricorder_uv_scan_time
+        state: "{{ states('input_datetime.tric_uv_time') }}"
+
+      - name: Tricorder UV Mission Elapsed
+        unique_id: tricorder_uv_mission_elapsed
+        state: "{{ states('input_number.tric_uv_elapsed') }}"

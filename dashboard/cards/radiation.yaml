@@ -1,0 +1,724 @@
+type: custom:html-template-card
+ignore_line_breaks: true
+entities:
+- input_text.tric_archive_mission_id
+- sensor.tricorder_mission_scans
+content: |
+  {# The mission selector is the ONLY source of the chosen mission ID. #} {% set selected_mid = states('input_text.tric_archive_mission_id') %} {% set scan_results =
+       state_attr('sensor.tricorder_mission_scans', 'results') or [] %}
+  {% set scan_series = [] %} {% if scan_results and scan_results[0].get('series') %}
+    {% set scan_series = scan_results[0]['series'] %}
+  {% endif %}
+  {# Summary scans and one-second samples are separate HA series. #} {% set summary = namespace(columns=[], rows=[]) %} {% set rad_series = namespace(columns=[], rows=[]) %} {% for series in scan_series %}
+    {% if series.get('name', '') == 'tricorder_radiation' %}
+      {% set summary.columns = series.get('columns', []) %}
+      {% set summary.rows = series.get('values', []) %}
+    {% elif series.get('name', '') == 'tricorder_radiation_series' %}
+      {% set rad_series.columns = series.get('columns', []) %}
+      {% set rad_series.rows = series.get('values', []) %}
+    {% endif %}
+  {% endfor %}
+  {# Ignore stale query results when the user switches missions. #} {# For multiple scans in one mission, take the latest completed scan. #} {% set chosen = namespace(row=none, time='') %} {% if selected_mid not in ['', 'unknown', 'unavailable']
+        and 'mission_id' in summary.columns
+        and 'time' in summary.columns %}
+    {% set mid_i = summary.columns.index('mission_id') %}
+    {% set time_i = summary.columns.index('time') %}
+    {% for row in summary.rows %}
+      {% if row[mid_i] == selected_mid
+            and row[time_i] is not none
+            and (chosen.row is none or row[time_i] >= chosen.time) %}
+        {% set chosen.row = row %}
+        {% set chosen.time = row[time_i] %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {% set has_scan = chosen.row is not none %} {% set cpm = 0 %} {% set dose = 0 %} {% set pulses = 0 %} {% set duration = 0 %} {% set record_id = none %} {% set rad_status = 'NO SCAN' %} {% set scan_raw = none %}
+  {% if has_scan %}
+    {% set cpm = chosen.row[summary.columns.index('cpm')] | float(0)
+       if 'cpm' in summary.columns else 0 %}
+    {% set dose = chosen.row[summary.columns.index('dose_usvh')] | float(0)
+       if 'dose_usvh' in summary.columns else 0 %}
+    {% set pulses = chosen.row[summary.columns.index('pulses')] | float(0)
+       if 'pulses' in summary.columns else 0 %}
+    {% set duration = chosen.row[summary.columns.index('duration_seconds')] | float(0)
+       if 'duration_seconds' in summary.columns else 0 %}
+    {% set record_id = chosen.row[summary.columns.index('record_id')]
+       if 'record_id' in summary.columns else none %}
+    {% set raw_status = chosen.row[summary.columns.index('status')]
+       if 'status' in summary.columns else none %}
+    {% set rad_status = raw_status if raw_status not in
+       [none, '', 'none', 'unknown', 'unavailable'] else 'UNREPORTED' %}
+    {% set scan_raw = chosen.time %}
+  {% endif %}
+  {% set cpm_unit = 'CPM' %} {% set dose_unit = 'µSv/h' %} {% set pulse_unit = '' %} {% set duration_unit = 's' %}
+  {% set s = rad_status | lower %} {% if 'danger' in s
+        or 'critical' in s
+        or 'hazard' in s
+        or 'alarm' in s %}
+    {% set rad_color = '#ef4444' %}
+  {% elif 'warning' in s
+          or 'high' in s %}
+    {% set rad_color = '#f59e0b' %}
+  {% elif 'caution' in s
+          or 'elevated' in s %}
+    {% set rad_color = '#facc15' %}
+  {% elif 'normal' in s
+          or 'safe' in s
+          or 'ok' in s
+          or 'nominal' in s %}
+    {% set rad_color = '#22c55e' %}
+  {% else %}
+    {% set rad_color = '#8e87b6' %}
+  {% endif %}
+  {% set scan_dt = as_datetime(scan_raw, none) if scan_raw else none %} {% if scan_dt is not none %}
+    {% set recorded = as_timestamp(scan_dt)
+       | timestamp_custom('%m/%d/%Y %H:%M:%S', true) %}
+  {% else %}
+    {% set recorded = scan_raw or 'NO SCAN' %}
+  {% endif %}
+  {# Match BOTH the selected mission and its selected summary record. #} {% set latest_rows = namespace(rows=[]) %} {% if has_scan
+        and record_id is not none
+        and 'mission_id' in rad_series.columns
+        and ('record_id' in rad_series.columns or 'scan_id' in rad_series.columns) %}
+    {% set ri = rad_series.columns.index('record_id')
+       if 'record_id' in rad_series.columns
+       else rad_series.columns.index('scan_id') %}
+    {% set mi = rad_series.columns.index('mission_id') %}
+    {% for row in rad_series.rows %}
+      {% if row[mi] == selected_mid
+            and row[ri] | int(-1) == record_id | int(-2) %}
+        {% set latest_rows.rows = latest_rows.rows + [row] %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {% macro graph_popup(field, label, unit, color, decimals=2,
+                       footer_label='LAST', footer_value=none) %}
+    {% set ns = namespace(points=[], values=[]) %}
+
+    {% if field in rad_series.columns and
+          'elapsed_seconds' in rad_series.columns %}
+      {% set fi = rad_series.columns.index(field) %}
+      {% set ei = rad_series.columns.index('elapsed_seconds') %}
+
+      {% for row in latest_rows.rows %}
+        {% if row[fi] is not none and row[ei] is not none %}
+          {% set cpm_v = row[rad_series.columns.index('cpm')]
+             if 'cpm' in rad_series.columns else none %}
+          {% set dose_v = row[rad_series.columns.index('dose_usvh')]
+             if 'dose_usvh' in rad_series.columns else none %}
+          {% set pulse_v = row[rad_series.columns.index('pulse_1s')]
+             if 'pulse_1s' in rad_series.columns else none %}
+          {% set time_v = none %}
+          {% if 'time' in rad_series.columns %}
+            {% set raw_dt = as_datetime(row[rad_series.columns.index('time')]) %}
+            {% if raw_dt %}
+              {% set time_v = raw_dt.strftime('%H:%M:%S') %}
+            {% endif %}
+          {% endif %}
+
+          {% set ns.values = ns.values + [row[fi] | float(0)] %}
+          {% set ns.points = ns.points + [{
+            'elapsed': row[ei] | float(0),
+            'value': row[fi] | float(0),
+            'cpm': cpm_v,
+            'dose': dose_v,
+            'pulse': pulse_v,
+            'time': time_v
+          }] %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+
+    {% set count = ns.points | count %}
+
+    {% if count %}
+      {% set values = ns.values %}
+      {% set minval = values | min %}
+      {% set maxval = values | max %}
+      {% set avgval = (values | sum) / count %}
+      {% set latest = values[-1] %}
+      {% set maxe = ns.points | map(attribute='elapsed') | max %}
+
+      {% set picks = namespace(mini=1, maxi=1, min_found=false, max_found=false) %}
+      {% for p in ns.points %}
+        {% if not picks.min_found and p['value'] == minval %}
+          {% set picks.mini = loop.index %}
+          {% set picks.min_found = true %}
+        {% endif %}
+        {% if not picks.max_found and p['value'] == maxval %}
+          {% set picks.maxi = loop.index %}
+          {% set picks.max_found = true %}
+        {% endif %}
+      {% endfor %}
+
+      {% set graph = namespace(coords=[]) %}
+      {% for p in ns.points %}
+        {% if maxe <= 0 %}
+          {% set x = 150 %}
+        {% else %}
+          {% set x = 14 + ((p.elapsed / maxe) * 272) %}
+        {% endif %}
+
+        {% if maxval == minval %}
+          {% set y = 70 %}
+        {% else %}
+          {% set y = 126 - (((p.value - minval) /
+                            (maxval - minval)) * 106) %}
+        {% endif %}
+
+        {% set graph.coords = graph.coords + [{
+          'x': x | round(1),
+          'y': y | round(1),
+          'left': ((x / 300) * 100) | round(3),
+          'top': ((y / 150) * 100) | round(3),
+          'index': loop.index,
+          'p': p
+        }] %}
+      {% endfor %}
+
+      <div class="rad-popup" style="
+        background:#000;
+        color:#fff;
+        padding:16px;
+        font-family:Antonio,Arial Narrow,sans-serif;
+        box-sizing:border-box;
+      ">
+        <style>
+          .rad-radio { position:absolute; opacity:0; pointer-events:none; }
+          .rad-choice { cursor:pointer; }
+          .rad-choice:hover { filter:brightness(1.12); }
+          .rad-selected { display:none; }
+          .rad-selected-empty { display:block; }
+          {% for c in graph.coords %}
+            #{{ field }}-pick-{{ c['index'] }}:checked ~ .rad-selected-wrap .rad-selected-empty { display:none; }
+            #{{ field }}-pick-{{ c['index'] }}:checked ~ .rad-selected-wrap .rad-selected-{{ c['index'] }} { display:block; }
+          {% endfor %}
+        </style>
+
+        {% for c in graph.coords %}
+          <input class="rad-radio"
+                 type="radio"
+                 name="{{ field }}-pick"
+                 id="{{ field }}-pick-{{ c['index'] }}">
+        {% endfor %}
+
+        <div style="
+          height:7px;
+          background:{{ color }};
+          border-radius:8px;
+          margin-bottom:13px;
+        "></div>
+
+        <div style="
+          text-align:center;
+          font-size:22px;
+          font-weight:900;
+          letter-spacing:1px;
+        ">
+          {{ label }}
+        </div>
+
+        <div style="
+          text-align:center;
+          color:{{ color }};
+          font-size:11px;
+          font-weight:800;
+          letter-spacing:1px;
+          margin:3px 0 14px 0;
+        ">
+          {{ duration | round(0) | int }} SECOND SCAN
+        </div>
+
+        <div style="
+          display:grid;
+          grid-template-columns:repeat(4,1fr);
+          gap:7px;
+          margin-bottom:12px;
+        ">
+          <label class="rad-choice"
+                 for="{{ field }}-pick-{{ picks.mini }}"
+                 style="background:#111;border-radius:11px;padding:8px;text-align:center;">
+            <div style="font-size:8px;color:#777;">MIN</div>
+            <div style="font-size:15px;font-weight:900;">
+              {{ minval | round(decimals) }}
+              <span style="font-size:8px;color:#aaa;">{{ unit }}</span>
+            </div>
+          </label>
+
+          <div style="background:#111;border-radius:11px;padding:8px;text-align:center;">
+            <div style="font-size:8px;color:#777;">AVG</div>
+            <div style="font-size:15px;font-weight:900;">
+              {{ avgval | round(decimals) }}
+              <span style="font-size:8px;color:#aaa;">{{ unit }}</span>
+            </div>
+          </div>
+
+          <label class="rad-choice"
+                 for="{{ field }}-pick-{{ picks.maxi }}"
+                 style="background:#111;border-radius:11px;padding:8px;text-align:center;">
+            <div style="font-size:8px;color:#777;">MAX</div>
+            <div style="font-size:15px;font-weight:900;">
+              {{ maxval | round(decimals) }}
+              <span style="font-size:8px;color:#aaa;">{{ unit }}</span>
+            </div>
+          </label>
+
+          <div style="background:#111;border-radius:11px;padding:8px;text-align:center;">
+            <div style="font-size:8px;color:#777;">SAMPLES</div>
+            <div style="font-size:15px;font-weight:900;">{{ count }}</div>
+          </div>
+        </div>
+
+        <div class="rad-selected-wrap"
+             style="background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:9px;margin-bottom:12px;min-height:55px;">
+          <div class="rad-selected-empty"
+               style="text-align:center;color:#777;font-size:10px;font-weight:800;letter-spacing:.7px;padding:17px 0;">
+            TAP A POINT OR SAMPLE TO INSPECT
+          </div>
+
+          {% for c in graph.coords %}
+            <div class="rad-selected rad-selected-{{ c['index'] }}">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;">
+                <div style="font-size:11px;font-weight:900;color:{{ color }};letter-spacing:.8px;">
+                  SAMPLE {{ c['index'] }}
+                </div>
+                <div style="font-size:10px;color:#aaa;">
+                  {% if c['p']['time'] %}{{ c['p']['time'] }} · {% endif %}
+                  +{{ c['p']['elapsed'] | round(1) }} s
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;">
+                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;">
+                  <div style="font-size:7px;color:#666;">CPM</div>
+                  <div style="font-size:11px;font-weight:900;">
+                    {{ c['p']['cpm'] | round(2) if c['p']['cpm'] is not none else '--' }}
+                  </div>
+                </div>
+
+                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;">
+                  <div style="font-size:7px;color:#666;">DOSE</div>
+                  <div style="font-size:11px;font-weight:900;">
+                    {{ c['p']['dose'] | round(4) if c['p']['dose'] is not none else '--' }}
+                    {% if c['p']['dose'] is not none %} µSv/h{% endif %}
+                  </div>
+                </div>
+
+                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;">
+                  <div style="font-size:7px;color:#666;">PULSE</div>
+                  <div style="font-size:11px;font-weight:900;">
+                    {{ c['p']['pulse'] | round(0) | int if c['p']['pulse'] is not none else '--' }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div style="
+          background:#080808;
+          border:1px solid #222;
+          border-radius:14px;
+          padding:10px;
+        ">
+          <div style="position:relative;width:100%;height:260px;">
+            <svg
+              viewBox="0 0 300 150"
+              preserveAspectRatio="none"
+              style="width:100%;height:260px;display:block;position:absolute;inset:0;"
+            >
+              <line x1="14" y1="126" x2="286" y2="126"
+                    stroke="#333" stroke-width="1"/>
+              <line x1="14" y1="20" x2="14" y2="126"
+                    stroke="#333" stroke-width="1"/>
+
+              {% if count > 1 %}
+                <polyline
+                  points="{% for c in graph.coords %}{{ c['x'] }},{{ c['y'] }} {% endfor %}"
+                  fill="none"
+                  stroke="{{ color }}"
+                  stroke-width="3"
+                  vector-effect="non-scaling-stroke"
+                  stroke-linejoin="round"
+                  stroke-linecap="round"
+                />
+              {% endif %}
+
+              {% for c in graph.coords %}
+                <circle cx="{{ c['x'] }}"
+                        cy="{{ c['y'] }}"
+                        r="5"
+                        fill="{{ color }}">
+                  <title>
+                    {{ c['p']['elapsed'] | round(1) }} s — {{ c['p']['value'] | round(decimals) }} {{ unit }}
+                  </title>
+                </circle>
+              {% endfor %}
+            </svg>
+
+            {% for c in graph.coords %}
+              <label
+                class="rad-choice"
+                for="{{ field }}-pick-{{ c['index'] }}"
+                title="Sample {{ c['index'] }} — {{ c['p']['elapsed'] | round(1) }} s — {{ c['p']['value'] | round(decimals) }} {{ unit }}"
+                style="position:absolute;left:{{ c['left'] }}%;top:{{ c['top'] }}%;width:30px;height:30px;transform:translate(-50%,-50%);border-radius:50%;z-index:3;">
+              </label>
+            {% endfor %}
+          </div>
+
+          <div style="
+            display:flex;
+            justify-content:space-between;
+            color:#888;
+            font-size:10px;
+            font-weight:800;
+            margin-top:-3px;
+          ">
+            <span>0 s</span>
+            <span>{{ recorded }}</span>
+            <span>{{ maxe | round(0) | int }} s</span>
+          </div>
+        </div>
+
+        <div style="
+          margin-top:12px;
+          background:#0b0b0b;
+          border:1px solid #222;
+          border-radius:12px;
+          padding:8px;
+        ">
+          <div style="font-size:9px;color:#888;font-weight:800;letter-spacing:1px;margin-bottom:5px;">
+            SAMPLE DETAIL
+          </div>
+
+          {% for c in graph.coords %}
+            <label
+              class="rad-choice"
+              for="{{ field }}-pick-{{ c['index'] }}"
+              style="display:grid;grid-template-columns:54px 1fr 1fr 1fr;gap:5px;align-items:center;padding:5px 0;border-top:1px solid #181818;font-size:9px;"
+            >
+              <div style="color:#888;">+{{ c['p']['elapsed'] | round(1) }} s</div>
+              <div>
+                <span style="color:#777;">CPM </span>
+                {{ c['p']['cpm'] | round(2) if c['p']['cpm'] is not none else '--' }}
+              </div>
+              <div>
+                <span style="color:#777;">DOSE </span>
+                {{ c['p']['dose'] | round(4) if c['p']['dose'] is not none else '--' }}
+              </div>
+              <div>
+                <span style="color:#777;">PULSE </span>
+                {{ c['p']['pulse'] | round(0) | int if c['p']['pulse'] is not none else '--' }}
+              </div>
+            </label>
+          {% endfor %}
+        </div>
+
+        {% if footer_value is none %}
+          <label
+            class="rad-choice"
+            for="{{ field }}-pick-{{ count }}"
+            style="display:block;margin-top:10px;text-align:center;font-size:11px;color:#888;"
+          >
+            {{ footer_label }} {{ latest | round(decimals) }} {{ unit }}
+          </label>
+        {% else %}
+          <div style="
+            margin-top:10px;
+            text-align:center;
+            font-size:11px;
+            color:#888;
+          ">
+            {{ footer_label }} {{ footer_value }}
+          </div>
+        {% endif %}
+
+        <div style="
+          height:7px;
+          background:{{ color }};
+          border-radius:8px;
+          margin-top:13px;
+        "></div>
+      </div>
+
+    {% else %}
+
+      <div style="
+        background:#000;
+        color:#fff;
+        padding:22px;
+        font-family:Antonio,Arial Narrow,sans-serif;
+        text-align:center;
+      ">
+        <div style="font-size:20px;font-weight:900;">{{ label }}</div>
+        <div style="color:#888;margin-top:12px;">
+          No one-second radiation data for the selected mission/scan.
+        </div>
+        <div style="color:#666;margin-top:6px;font-size:10px;">
+          Select a mission with a radiation scan, or wait for mission data to load.
+        </div>
+      </div>
+
+    {% endif %}
+  {% endmacro %}
+  {% set cpm_popup = graph_popup(
+    'cpm','CPM','CPM',rad_color,2) %}
+
+  {% set dose_popup = graph_popup(
+    'dose_usvh','DOSE RATE','µSv/h','#f59e0b',4) %}
+
+  {% set pulses_popup = graph_popup(
+    'pulse_1s','PULSES / SECOND','counts','#8296ff',0,
+    'TOTAL PULSES', pulses | round(0) | int) %}
+
+  {% set info_popup %}
+    <div style="
+      background:#000;
+      color:#fff;
+      padding:18px;
+      font-family:Antonio,Arial Narrow,sans-serif;
+    ">
+      <div style="height:7px;background:{{ rad_color }};border-radius:8px;"></div>
+      <div style="text-align:center;font-size:22px;font-weight:900;margin:14px 0;">
+        RADIATION SCAN
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="background:#111;border-radius:12px;padding:10px;text-align:center;">
+          <div style="font-size:8px;color:#777;">DURATION</div>
+          <div style="font-size:18px;font-weight:900;">{{ duration | round(2) }} {{ duration_unit }}</div>
+        </div>
+        <div style="background:#111;border-radius:12px;padding:10px;text-align:center;">
+          <div style="font-size:8px;color:#777;">RECORDED</div>
+          <div style="font-size:14px;font-weight:900;">{{ recorded }}</div>
+        </div>
+        <div style="background:#111;border-radius:12px;padding:10px;text-align:center;">
+          <div style="font-size:8px;color:#777;">CPM</div>
+          <div style="font-size:18px;font-weight:900;">{{ cpm | round(2) }}</div>
+        </div>
+        <div style="background:#111;border-radius:12px;padding:10px;text-align:center;">
+          <div style="font-size:8px;color:#777;">STATUS</div>
+          <div style="font-size:14px;font-weight:900;">{{ rad_status | upper }}</div>
+        </div>
+      </div>
+      <div style="height:7px;background:{{ rad_color }};border-radius:8px;margin-top:14px;"></div>
+    </div>
+  {% endset %}
+  <style>
+    .env-card {
+      background: #000;
+      border: 0;
+      border-radius: 38px;
+      padding: 10px 18px 10px 18px;
+      overflow: hidden;
+      font-family: "Antonio", "Arial Narrow", sans-serif;
+      box-sizing: border-box;
+    }
+
+    .env-topline {
+      height: 7px;
+      margin: -5px -18px 10px -18px;
+    }
+
+    .env-bottomline {
+      height: 7px;
+      margin: 10px -18px -5px -18px;
+    }
+
+    .env-title {
+      color: #fff;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      margin: 0 0 7px 0;
+    }
+
+    .env-row {
+      display: grid;
+      height: 30px;
+      margin: 4px 0;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .env-row:hover {
+      filter: brightness(1.08);
+    }
+
+    .env-row.left {
+      grid-template-columns: 52px 1fr 1.75fr;
+    }
+
+    .env-row.right {
+      grid-template-columns: 1.75fr 1fr 52px;
+    }
+
+    .env-cap {
+      color: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .leftcap {
+      border-radius: 15px 0 0 15px;
+    }
+
+    .rightcap {
+      border-radius: 0 15px 15px 0;
+    }
+
+    .env-value {
+      background: #000;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 17px;
+      font-weight: 800;
+      white-space: nowrap;
+      padding: 0 4px;
+    }
+
+    .env-value.small {
+      font-size: 13px;
+    }
+
+    .unit {
+      font-size: 9px;
+      font-weight: 600;
+      margin-left: 3px;
+    }
+
+    .env-label {
+      color: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 9px;
+      font-weight: 800;
+      padding: 0 6px;
+    }
+
+    .round-right {
+      border-radius: 0 15px 15px 0;
+    }
+
+    .round-left {
+      border-radius: 15px 0 0 15px;
+    }
+
+    ha-icon {
+      --mdc-icon-size: 16px;
+    }
+  </style>
+  <div class="env-card">
+
+    <div class="env-topline" style="background:{{ rad_color }};"></div>
+
+    <div class="env-title">RADIATION</div>
+
+    <div
+      class="env-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"CPM SCAN",content:{{ cpm_popup | to_json }},initial_style:"normal"}}}}))'
+    >
+      <div class="env-cap leftcap" style="background:{{ rad_color }};">
+        <ha-icon icon="mdi:radioactive"></ha-icon>
+      </div>
+      <div class="env-value">
+        {{ '%.2f' | format(cpm) if has_scan else '--' }}
+        <span class="unit">{{ cpm_unit }}</span>
+      </div>
+      <div class="env-label round-right" style="background:{{ rad_color }};">CPM</div>
+    </div>
+
+    <div
+      class="env-row right"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"DOSE RATE SCAN",content:{{ dose_popup | to_json }},initial_style:"normal"}}}}))'
+    >
+      <div class="env-label round-left" style="background:#f59e0b;">DOSE</div>
+      <div class="env-value">
+        {{ '%.3f' | format(dose) if has_scan else '--' }}
+        <span class="unit">{{ dose_unit }}</span>
+      </div>
+      <div class="env-cap rightcap" style="background:#f59e0b;">
+        <ha-icon icon="mdi:radioactive-circle"></ha-icon>
+      </div>
+    </div>
+
+    <div
+      class="env-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"PULSE SCAN",content:{{ pulses_popup | to_json }},initial_style:"normal"}}}}))'
+    >
+      <div class="env-cap leftcap" style="background:#8296ff;">
+        <ha-icon icon="mdi:pulse"></ha-icon>
+      </div>
+      <div class="env-value">
+        {{ pulses | round(0) | int if has_scan else '--' }}
+        {% if pulse_unit %}
+          <span class="unit">{{ pulse_unit }}</span>
+        {% endif %}
+      </div>
+      <div class="env-label round-right" style="background:#8296ff;">PULSES</div>
+    </div>
+
+    <div
+      class="env-row right"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"RADIATION SCAN",content:{{ info_popup | to_json }},initial_style:"normal"}}}}))'
+    >
+      <div class="env-label round-left" style="background:#8296ff;">DURATION</div>
+      <div class="env-value">
+        {{ '%.2f' | format(duration) if has_scan else '--' }}
+        <span class="unit">{{ duration_unit }}</span>
+      </div>
+      <div class="env-cap rightcap" style="background:#8296ff;">
+        <ha-icon icon="mdi:timer-outline"></ha-icon>
+      </div>
+    </div>
+
+    <div
+      class="env-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"RADIATION SCAN",content:{{ info_popup | to_json }},initial_style:"normal"}}}}))'
+    >
+      <div class="env-cap leftcap" style="background:#3b82f6;">
+        <ha-icon icon="mdi:clock-outline"></ha-icon>
+      </div>
+      <div class="env-value small">
+        {{ recorded }}
+      </div>
+      <div class="env-label round-right" style="background:#3b82f6;">SCAN TIME</div>
+    </div>
+
+    <div
+      class="env-row right"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"RADIATION SCAN",content:{{ info_popup | to_json }},initial_style:"normal"}}}}))'
+    >
+      <div class="env-label round-left" style="background:{{ rad_color }};">STATUS</div>
+      <div class="env-value small">{{ rad_status | upper }}</div>
+      <div class="env-cap rightcap" style="background:{{ rad_color }};">
+        {% if rad_color == '#ef4444' %}
+          <ha-icon icon="mdi:alert-octagon"></ha-icon>
+        {% elif rad_color == '#f59e0b' or rad_color == '#facc15' %}
+          <ha-icon icon="mdi:alert"></ha-icon>
+        {% elif rad_color == '#22c55e' %}
+          <ha-icon icon="mdi:check-circle-outline"></ha-icon>
+        {% else %}
+          <ha-icon icon="mdi:help-circle-outline"></ha-icon>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="env-bottomline" style="background:{{ rad_color }};"></div>
+  </div>
+card_mod:
+  style: |
+    ha-card {
+      background: #29364c !important;
+      padding: 2px !important;
+      border: none !important;
+      border-radius: 40px !important;
+      box-shadow: none !important;
+      overflow: hidden !important;
+    }

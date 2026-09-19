@@ -1,0 +1,266 @@
+type: custom:html-template-card
+ignore_line_breaks: true
+entities:
+- sensor.tricorder_location
+- sensor.tricorder_location_time
+- sensor.tricorder_latitude
+- sensor.tricorder_longitude
+content: |
+  {% set lat = states('sensor.tricorder_latitude') %}
+  {% set lon = states('sensor.tricorder_longitude') %}
+  {% set loc_time = states('sensor.tricorder_location_time') %}
+
+  <style>
+
+    .loc-card {
+      background: #000;
+      border-radius: 38px;
+      padding: 10px 18px;
+      overflow: hidden;
+      font-family: "Antonio", "Arial Narrow", sans-serif;
+      box-sizing: border-box;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .loc-topline {
+      height: 7px;
+      background: #8296ff;
+      margin: -5px -18px 9px -18px;
+    }
+
+    .loc-bottomline {
+      height: 7px;
+      background: #8e87b6;
+      margin: 9px -18px -5px -18px;
+    }
+
+    .loc-title {
+      color: #fff;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      margin-bottom: 7px;
+    }
+
+    .locator {
+      display: grid;
+      grid-template-columns: 58px 1fr;
+      min-height: 68px;
+      background:
+        linear-gradient(rgba(130,150,255,.10) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(130,150,255,.10) 1px, transparent 1px),
+        #070b11;
+      background-size: 18px 18px;
+      border: 1px solid #29364c;
+      border-radius: 18px;
+      overflow: hidden;
+    }
+
+    .loc-icon {
+      background: #8296ff;
+      color: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 17px 0 0 17px;
+    }
+
+    .loc-icon ha-icon {
+      --mdc-icon-size: 28px;
+    }
+
+    .coordinates {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      min-width: 0;
+    }
+
+    .coordinate-main {
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: .4px;
+      white-space: nowrap;
+    }
+
+    .coordinate-sub {
+      margin-top: 4px;
+      color: #aeb9cc;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    .loc-data {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 5px;
+      margin-top: 6px;
+    }
+
+    .data-box {
+      height: 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #121923;
+      border-radius: 12px;
+      min-width: 0;
+    }
+
+    .data-label {
+      color: #8296ff;
+      font-size: 7px;
+      font-weight: 900;
+      letter-spacing: .8px;
+      line-height: 1;
+    }
+
+    .data-value {
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      margin-top: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 95%;
+    }
+
+    .map-box {
+      background: #f59e0b;
+    }
+
+    .map-box .data-label,
+    .map-box .data-value {
+      color: #000;
+    }
+
+  </style>
+
+
+  <div
+    class="loc-card"
+    title="Open Tricorder location map"
+
+    onclick='this.dispatchEvent(
+      new CustomEvent(
+        "ll-custom",
+        {
+          bubbles:true,
+          composed:true,
+          detail:{
+            browser_mod:{
+              service:"browser_mod.popup",
+              data:{
+                title:"TRICORDER LOCATION",
+                size:"normal",
+                content:{
+                  type:"vertical-stack",
+                  cards:[
+                    {
+                      type:"map",
+                      aspect_ratio:"4:3",
+                      dark_mode:true,
+                      default_zoom:14,
+                      entities:[
+                        "sensor.tricorder_location"
+                      ]
+                    },
+                    {
+                      type:"entities",
+                      show_header_toggle:false,
+                      entities:[
+                        {
+                          entity:"sensor.tricorder_location_time",
+                          name:"Location Time",
+                          icon:"mdi:clock-outline"
+                        },
+                        {
+                          entity:"sensor.tricorder_latitude",
+                          name:"Latitude",
+                          icon:"mdi:latitude"
+                        },
+                        {
+                          entity:"sensor.tricorder_longitude",
+                          name:"Longitude",
+                          icon:"mdi:longitude"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      )
+    )'
+  >
+
+    <div class="loc-topline"></div>
+
+    <div class="loc-title">
+      TRICORDER LOCATION
+    </div>
+
+
+    <div class="locator">
+
+      <div class="loc-icon">
+        <ha-icon icon="mdi:crosshairs-gps"></ha-icon>
+      </div>
+
+      <div class="coordinates">
+
+        <div class="coordinate-main">
+          {{ lat }}° &nbsp; {{ lon }}°
+        </div>
+
+        <div class="coordinate-sub">
+          POSITION FIX
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <div class="loc-data">
+
+      <div class="data-box">
+        <div class="data-label">LATITUDE</div>
+        <div class="data-value">{{ lat }}°</div>
+      </div>
+
+      <div class="data-box">
+        <div class="data-label">LONGITUDE</div>
+        <div class="data-value">{{ lon }}°</div>
+      </div>
+
+      <div class="data-box map-box">
+        <div class="data-label">LOCATION TIME</div>
+        <div class="data-value">{{ loc_time }}</div>
+      </div>
+
+    </div>
+
+
+    <div class="loc-bottomline"></div>
+
+  </div>
+card_mod:
+  style: |
+    ha-card {
+      background: #29364c !important;
+      padding: 2px !important;
+      border: none !important;
+      border-radius: 40px !important;
+      box-shadow: none !important;
+      overflow: hidden !important;
+    }

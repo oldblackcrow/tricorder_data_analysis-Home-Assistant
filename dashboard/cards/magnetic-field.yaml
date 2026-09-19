@@ -1,0 +1,379 @@
+type: custom:html-template-card
+ignore_line_breaks: true
+entities:
+- sensor.tricorder_mission_scans
+- input_text.tric_archive_mission_id
+content: |
+  {# Magnetic values and graphs belong ONLY to the selected mission. #} {% set selected_mid = states('input_text.tric_archive_mission_id') | trim %} {% set scan_results =
+       state_attr('sensor.tricorder_mission_scans', 'results') or [] %}
+  {% set scan_series = [] %} {% if scan_results and scan_results[0].get('series') %}
+    {% set scan_series = scan_results[0]['series'] %}
+  {% endif %}
+  {% set mag = namespace(columns=[], rows=[]) %} {% for series in scan_series %}
+    {% if series.get('name', '') == 'tricorder_magnetic' %}
+      {% set mag.columns = series.get('columns', []) %}
+      {% set mag.rows = series.get('values', []) %}
+    {% endif %}
+  {% endfor %}
+  {# Ignore data from the previously selected mission during refresh. #} {% set mission_rows = namespace(rows=[]) %} {% if selected_mid and 'mission_id' in mag.columns %}
+    {% set mi = mag.columns.index('mission_id') %}
+    {% for row in mag.rows %}
+      {% if row[mi] | string == selected_mid %}
+        {% set mission_rows.rows = mission_rows.rows + [row] %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {# Most recent contiguous magnetic scan within the selected mission. #} {% set mag_cluster = namespace(rows=[], active=true, last_ts=none) %} {% if mission_rows.rows and 'time' in mag.columns %}
+    {% set ti = mag.columns.index('time') %}
+    {% for row in mission_rows.rows | reverse %}
+      {% if mag_cluster.active %}
+        {% set dt = as_datetime(row[ti], none) %}
+        {% if dt is not none %}
+          {% set ts = as_timestamp(dt) %}
+          {% if mag_cluster.last_ts is none or
+                (mag_cluster.last_ts - ts) <= 2.5 %}
+            {% set mag_cluster.rows = [row] + mag_cluster.rows %}
+            {% set mag_cluster.last_ts = ts %}
+          {% else %}
+            {% set mag_cluster.active = false %}
+          {% endif %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {# Final null/end-of-scan samples must not erase actual measurements. #} {% set vals = namespace(field=none, heading=none, bx=none, by=none,
+                          bz=none, recorded='--') %}
+  {% if mag_cluster.rows and 'time' in mag.columns %}
+    {% set ti = mag.columns.index('time') %}
+    {% for row in mag_cluster.rows %}
+      {% if 'magnetic_field_ut' in mag.columns and
+            row[mag.columns.index('magnetic_field_ut')] is not none %}
+        {% set vals.field = row[mag.columns.index('magnetic_field_ut')] %}
+      {% endif %}
+      {% if 'heading_deg' in mag.columns and
+            row[mag.columns.index('heading_deg')] is not none %}
+        {% set vals.heading = row[mag.columns.index('heading_deg')] %}
+      {% endif %}
+      {% if 'mag_x_ut' in mag.columns and
+            row[mag.columns.index('mag_x_ut')] is not none %}
+        {% set vals.bx = row[mag.columns.index('mag_x_ut')] %}
+      {% endif %}
+      {% if 'mag_y_ut' in mag.columns and
+            row[mag.columns.index('mag_y_ut')] is not none %}
+        {% set vals.by = row[mag.columns.index('mag_y_ut')] %}
+      {% endif %}
+      {% if 'mag_z_ut' in mag.columns and
+            row[mag.columns.index('mag_z_ut')] is not none %}
+        {% set vals.bz = row[mag.columns.index('mag_z_ut')] %}
+      {% endif %}
+      {% set dt = as_datetime(row[ti], none) %}
+      {% if dt is not none %}
+        {% set vals.recorded = dt.strftime('%m/%d/%Y %H:%M:%S') %}
+      {% endif %}
+    {% endfor %}
+  {% endif %} {% set magnetic_recorded = vals.recorded %}
+  {% macro sensor_popup(columns, rows, field, label, unit, color,
+                         recorded, decimals=1) %}
+    {% set ns = namespace(points=[], values=[], first_ts=none, last_ts=none) %}
+
+    {% if field in columns and 'time' in columns %}
+      {% set fi = columns.index(field) %}
+      {% set ti = columns.index('time') %}
+
+      {% for row in rows %}
+        {% if row[fi] is not none %}
+          {% set dt = as_datetime(row[ti]) %}
+          {% if dt %}
+            {% set ts = as_timestamp(dt) %}
+            {% set field_v = row[columns.index('magnetic_field_ut')] if 'magnetic_field_ut' in columns else none %}
+            {% set heading_v = row[columns.index('heading_deg')] if 'heading_deg' in columns else none %}
+            {% set bx_v = row[columns.index('mag_x_ut')] if 'mag_x_ut' in columns else none %}
+            {% set by_v = row[columns.index('mag_y_ut')] if 'mag_y_ut' in columns else none %}
+            {% set bz_v = row[columns.index('mag_z_ut')] if 'mag_z_ut' in columns else none %}
+            {% set mission_v = row[columns.index('elapsed_seconds')] if 'elapsed_seconds' in columns else none %}
+            {% if ns.first_ts is none %}
+              {% set ns.first_ts = ts %}
+            {% endif %}
+            {% set ns.last_ts = ts %}
+            {% set ns.values = ns.values + [row[fi] | float(0)] %}
+            {% set ns.points = ns.points + [{
+              'ts': ts,
+              'value': row[fi] | float(0),
+              'time': dt.strftime('%H:%M:%S'),
+              'mission': mission_v,
+              'field': field_v,
+              'heading': heading_v,
+              'bx': bx_v,
+              'by': by_v,
+              'bz': bz_v
+            }] %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+
+    {% set count = ns.points | count %}
+
+    {% if count %}
+      {% set minval = ns.values | min %}
+      {% set maxval = ns.values | max %}
+      {% set avgval = (ns.values | sum) / count %}
+      {% set latest_value = ns.values[-1] %}
+
+      {% if count > 1 %}
+        {% set span = ns.last_ts - ns.first_ts %}
+        {% set duration = (span + 1) | round(0) | int %}
+      {% else %}
+        {% set span = 0 %}
+        {% set duration = 1 %}
+      {% endif %}
+
+      {% set picks = namespace(mini=1, maxi=1, min_found=false, max_found=false) %}
+      {% for p in ns.points %}
+        {% if not picks.min_found and p['value'] == minval %}
+          {% set picks.mini = loop.index %}
+          {% set picks.min_found = true %}
+        {% endif %}
+        {% if not picks.max_found and p['value'] == maxval %}
+          {% set picks.maxi = loop.index %}
+          {% set picks.max_found = true %}
+        {% endif %}
+      {% endfor %}
+
+      {% set graph = namespace(coords=[]) %}
+      {% for p in ns.points %}
+        {% if span <= 0 %}
+          {% set x = 150 %}
+          {% set offset = 0 %}
+        {% else %}
+          {% set x = 14 + (((p['ts'] - ns.first_ts) / span) * 272) %}
+          {% set offset = p['ts'] - ns.first_ts %}
+        {% endif %}
+
+        {% if maxval == minval %}
+          {% set y = 70 %}
+        {% else %}
+          {% set y = 126 - (((p['value'] - minval) /
+                             (maxval - minval)) * 106) %}
+        {% endif %}
+
+        {% set graph.coords = graph.coords + [{
+          'x': x | round(1),
+          'y': y | round(1),
+          'left': ((x / 300) * 100) | round(3),
+          'top': ((y / 150) * 100) | round(3),
+          'offset': offset | round(1),
+          'index': loop.index,
+          'p': p
+        }] %}
+      {% endfor %}
+
+      <div class="mag-popup" style="background:#000;color:#fff;padding:16px;font-family:Antonio,Arial Narrow,sans-serif;box-sizing:border-box;">
+        <style>
+          .mag-radio { position:absolute; opacity:0; pointer-events:none; }
+          .mag-choice { cursor:pointer; }
+          .mag-choice:hover { filter:brightness(1.12); }
+          .mag-selected { display:none; }
+          .mag-selected-empty { display:block; }
+          {% for c in graph.coords %}
+            #{{ field }}-pick-{{ c['index'] }}:checked ~ .mag-selected-wrap .mag-selected-empty { display:none; }
+            #{{ field }}-pick-{{ c['index'] }}:checked ~ .mag-selected-wrap .mag-selected-{{ c['index'] }} { display:block; }
+          {% endfor %}
+        </style>
+
+        {% for c in graph.coords %}
+          <input class="mag-radio" type="radio" name="{{ field }}-pick" id="{{ field }}-pick-{{ c['index'] }}">
+        {% endfor %}
+
+        <div style="height:7px;background:{{ color }};border-radius:8px;margin-bottom:13px;"></div>
+
+        <div style="text-align:center;font-size:22px;font-weight:900;letter-spacing:1px;">{{ label }}</div>
+        <div style="text-align:center;color:{{ color }};font-size:11px;font-weight:800;letter-spacing:1px;margin:3px 0 14px 0;">{{ duration }} SECOND SCAN</div>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px;">
+          <label class="mag-choice" for="{{ field }}-pick-{{ picks.mini }}" style="background:#111;border-radius:11px;padding:8px;text-align:center;">
+            <div style="font-size:8px;color:#777;">MIN</div>
+            <div style="font-size:15px;font-weight:900;">{{ minval | round(decimals) }} <span style="font-size:8px;color:#aaa;">{{ unit }}</span></div>
+          </label>
+          <div style="background:#111;border-radius:11px;padding:8px;text-align:center;">
+            <div style="font-size:8px;color:#777;">AVG</div>
+            <div style="font-size:15px;font-weight:900;">{{ avgval | round(decimals) }} <span style="font-size:8px;color:#aaa;">{{ unit }}</span></div>
+          </div>
+          <label class="mag-choice" for="{{ field }}-pick-{{ picks.maxi }}" style="background:#111;border-radius:11px;padding:8px;text-align:center;">
+            <div style="font-size:8px;color:#777;">MAX</div>
+            <div style="font-size:15px;font-weight:900;">{{ maxval | round(decimals) }} <span style="font-size:8px;color:#aaa;">{{ unit }}</span></div>
+          </label>
+          <div style="background:#111;border-radius:11px;padding:8px;text-align:center;">
+            <div style="font-size:8px;color:#777;">SAMPLES</div>
+            <div style="font-size:15px;font-weight:900;">{{ count }}</div>
+          </div>
+        </div>
+
+        <div class="mag-selected-wrap" style="background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:9px;margin-bottom:12px;min-height:55px;">
+          <div class="mag-selected-empty" style="text-align:center;color:#777;font-size:10px;font-weight:800;letter-spacing:.7px;padding:17px 0;">TAP A POINT OR SAMPLE TO INSPECT</div>
+          {% for c in graph.coords %}
+            <div class="mag-selected mag-selected-{{ c['index'] }}">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;">
+                <div style="font-size:11px;font-weight:900;color:{{ color }};letter-spacing:.8px;">SAMPLE {{ c['index'] }}</div>
+                <div style="font-size:10px;color:#aaa;">{{ c['p']['time'] }} · +{{ c['offset'] }} s</div>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px;">
+                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:7px;color:#666;">FIELD</div><div style="font-size:11px;font-weight:900;">{{ c['p']['field'] | round(2) if c['p']['field'] is not none else '--' }}{% if c['p']['field'] is not none %} µT{% endif %}</div></div>
+                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:7px;color:#666;">HEAD</div><div style="font-size:11px;font-weight:900;">{{ c['p']['heading'] | round(1) if c['p']['heading'] is not none else '--' }}{% if c['p']['heading'] is not none %}°{% endif %}</div></div>
+                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:7px;color:#666;">Bx</div><div style="font-size:11px;font-weight:900;">{{ c['p']['bx'] | round(2) if c['p']['bx'] is not none else '--' }}{% if c['p']['bx'] is not none %} µT{% endif %}</div></div>
+                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:7px;color:#666;">By</div><div style="font-size:11px;font-weight:900;">{{ c['p']['by'] | round(2) if c['p']['by'] is not none else '--' }}{% if c['p']['by'] is not none %} µT{% endif %}</div></div>
+                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:7px;color:#666;">Bz</div><div style="font-size:11px;font-weight:900;">{{ c['p']['bz'] | round(2) if c['p']['bz'] is not none else '--' }}{% if c['p']['bz'] is not none %} µT{% endif %}</div></div>
+              </div>
+              <div style="text-align:center;color:#777;font-size:8px;margin-top:6px;">MISSION {% if c['p']['mission'] is not none %}{{ c['p']['mission'] | round(1) }} s{% else %}--{% endif %}</div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div style="background:#080808;border:1px solid #222;border-radius:14px;padding:10px;">
+          <div style="position:relative;width:100%;height:260px;">
+            <svg viewBox="0 0 300 150" preserveAspectRatio="none" style="width:100%;height:260px;display:block;position:absolute;inset:0;">
+              <line x1="14" y1="126" x2="286" y2="126" stroke="#333" stroke-width="1"/>
+              <line x1="14" y1="20" x2="14" y2="126" stroke="#333" stroke-width="1"/>
+              {% if count > 1 %}
+                <polyline points="{% for c in graph.coords %}{{ c['x'] }},{{ c['y'] }} {% endfor %}" fill="none" stroke="{{ color }}" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
+              {% endif %}
+              {% for c in graph.coords %}
+                <circle cx="{{ c['x'] }}" cy="{{ c['y'] }}" r="5" fill="{{ color }}"><title>{{ c['p']['time'] }} — {{ c['p']['value'] | round(decimals) }} {{ unit }}</title></circle>
+              {% endfor %}
+            </svg>
+            {% for c in graph.coords %}
+              <label class="mag-choice" for="{{ field }}-pick-{{ c['index'] }}" title="Sample {{ c['index'] }} — {{ c['p']['time'] }} — {{ c['p']['value'] | round(decimals) }} {{ unit }}" style="position:absolute;left:{{ c['left'] }}%;top:{{ c['top'] }}%;width:30px;height:30px;transform:translate(-50%,-50%);border-radius:50%;z-index:3;"></label>
+            {% endfor %}
+          </div>
+          <div style="display:flex;justify-content:space-between;color:#888;font-size:10px;font-weight:800;margin-top:-3px;">
+            <span>0 s</span><span>{{ recorded }}</span><span>{{ duration }} s</span>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:8px;">
+          <div style="font-size:9px;color:#888;font-weight:800;letter-spacing:1px;margin-bottom:5px;">SAMPLE DETAIL</div>
+          {% for c in graph.coords %}
+            <label class="mag-choice" for="{{ field }}-pick-{{ c['index'] }}" style="display:grid;grid-template-columns:44px 1fr 1fr 1fr 1fr 1fr;gap:4px;align-items:center;padding:5px 0;border-top:1px solid #181818;font-size:9px;">
+              <div style="color:#888;">{{ c['p']['time'] }}</div>
+              <div><span style="color:#777;">F </span>{{ c['p']['field'] | round(2) if c['p']['field'] is not none else '--' }}</div>
+              <div><span style="color:#777;">H </span>{{ c['p']['heading'] | round(1) if c['p']['heading'] is not none else '--' }}</div>
+              <div><span style="color:#777;">X </span>{{ c['p']['bx'] | round(2) if c['p']['bx'] is not none else '--' }}</div>
+              <div><span style="color:#777;">Y </span>{{ c['p']['by'] | round(2) if c['p']['by'] is not none else '--' }}</div>
+              <div><span style="color:#777;">Z </span>{{ c['p']['bz'] | round(2) if c['p']['bz'] is not none else '--' }}</div>
+            </label>
+          {% endfor %}
+        </div>
+
+        <label class="mag-choice" for="{{ field }}-pick-{{ count }}" style="display:block;margin-top:10px;text-align:center;font-size:11px;color:#888;">LAST {{ latest_value | round(decimals) }} {{ unit }}</label>
+        <div style="height:7px;background:{{ color }};border-radius:8px;margin-top:13px;"></div>
+      </div>
+    {% else %}
+      <div style="background:#000;color:#fff;padding:22px;font-family:Antonio,Arial Narrow,sans-serif;text-align:center;">
+        <div style="font-size:20px;font-weight:900;">{{ label }}</div>
+        <div style="color:#888;margin-top:12px;">No time-series samples found for this scan.</div>
+      </div>
+    {% endif %}
+  {% endmacro %}
+  {% set field_popup = sensor_popup(
+    mag.columns, mag_cluster.rows,
+    'magnetic_field_ut','MAGNETIC FIELD','µT','#f59e0b',
+    magnetic_recorded,2) %}
+
+  {% set heading_popup = sensor_popup(
+    mag.columns, mag_cluster.rows,
+    'heading_deg','HEADING','°','#8296ff',
+    magnetic_recorded,1) %}
+
+  {% set bx_popup = sensor_popup(
+    mag.columns, mag_cluster.rows,
+    'mag_x_ut','Bx','µT','#ef4444',
+    magnetic_recorded,2) %}
+
+  {% set by_popup = sensor_popup(
+    mag.columns, mag_cluster.rows,
+    'mag_y_ut','By','µT','#22c55e',
+    magnetic_recorded,2) %}
+
+  {% set bz_popup = sensor_popup(
+    mag.columns, mag_cluster.rows,
+    'mag_z_ut','Bz','µT','#3b82f6',
+    magnetic_recorded,2) %}
+
+  <style>
+    .mag-card {
+      background:#000;
+      border:0;
+      border-radius:38px;
+      padding:10px 18px;
+      overflow:hidden;
+      font-family:"Antonio","Arial Narrow",sans-serif;
+      box-sizing:border-box;
+    }
+    .mag-topline {height:7px;background:#8296ff;margin:-5px -18px 10px -18px;}
+    .mag-bottomline {height:7px;background:#8e87b6;margin:10px -18px -5px -18px;}
+    .mag-title {color:#fff;text-align:center;font-size:18px;font-weight:800;letter-spacing:1px;margin:0 0 7px 0;}
+    .mag-row {display:grid;height:30px;margin:4px 0;cursor:pointer;user-select:none;}
+    .mag-row:hover {filter:brightness(1.08);}
+    .mag-row.left {grid-template-columns:52px 1fr 1.75fr;}
+    .mag-row.right {grid-template-columns:1.75fr 1fr 52px;}
+    .mag-cap {color:#000;display:flex;align-items:center;justify-content:center;}
+    .leftcap {border-radius:15px 0 0 15px;}
+    .rightcap {border-radius:0 15px 15px 0;}
+    .mag-value {background:#000;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:17px;font-weight:800;white-space:nowrap;padding:0 4px;}
+    .unit {font-size:9px;font-weight:600;margin-left:3px;}
+    .mag-label {color:#000;display:flex;align-items:center;justify-content:center;text-align:center;font-size:9px;font-weight:800;padding:0 6px;}
+    .round-right {border-radius:0 15px 15px 0;}
+    .round-left {border-radius:15px 0 0 15px;}
+    ha-icon {--mdc-icon-size:16px;}
+  </style>
+  <div class="mag-card">
+    <div class="mag-topline"></div>
+    <div class="mag-title">MAGNETIC FIELD</div>
+
+    <div class="mag-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"MAGNETIC FIELD SCAN",content:{{ field_popup | to_json }},initial_style:"normal"}}}}))'>
+      <div class="mag-cap leftcap" style="background:#f59e0b;"><ha-icon icon="mdi:magnet"></ha-icon></div>
+      <div class="mag-value">{% if vals.field is not none %}{{ '%.2f' | format(vals.field | float(0)) }}<span class="unit">µT</span>{% else %}--{% endif %}</div>
+      <div class="mag-label round-right" style="background:#f59e0b;">FIELD</div>
+    </div>
+
+    <div class="mag-row right"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"HEADING SCAN",content:{{ heading_popup | to_json }},initial_style:"normal"}}}}))'>
+      <div class="mag-label round-left" style="background:#8296ff;">HEADING</div>
+      <div class="mag-value">{% if vals.heading is not none %}{{ '%.1f' | format(vals.heading | float(0)) }}<span class="unit">°</span>{% else %}--{% endif %}</div>
+      <div class="mag-cap rightcap" style="background:#8296ff;"><ha-icon icon="mdi:compass-outline"></ha-icon></div>
+    </div>
+
+    <div class="mag-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"Bx SCAN",content:{{ bx_popup | to_json }},initial_style:"normal"}}}}))'>
+      <div class="mag-cap leftcap" style="background:#ef4444;"><ha-icon icon="mdi:axis-x-arrow"></ha-icon></div>
+      <div class="mag-value">{% if vals.bx is not none %}{{ '%+.2f' | format(vals.bx | float(0)) }}<span class="unit">µT</span>{% else %}--{% endif %}</div>
+      <div class="mag-label round-right" style="background:#ef4444;">Bx</div>
+    </div>
+
+    <div class="mag-row right"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"By SCAN",content:{{ by_popup | to_json }},initial_style:"normal"}}}}))'>
+      <div class="mag-label round-left" style="background:#22c55e;">By</div>
+      <div class="mag-value">{% if vals.by is not none %}{{ '%+.2f' | format(vals.by | float(0)) }}<span class="unit">µT</span>{% else %}--{% endif %}</div>
+      <div class="mag-cap rightcap" style="background:#22c55e;"><ha-icon icon="mdi:axis-y-arrow"></ha-icon></div>
+    </div>
+
+    <div class="mag-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"Bz SCAN",content:{{ bz_popup | to_json }},initial_style:"normal"}}}}))'>
+      <div class="mag-cap leftcap" style="background:#3b82f6;"><ha-icon icon="mdi:axis-z-arrow"></ha-icon></div>
+      <div class="mag-value">{% if vals.bz is not none %}{{ '%+.2f' | format(vals.bz | float(0)) }}<span class="unit">µT</span>{% else %}--{% endif %}</div>
+      <div class="mag-label round-right" style="background:#3b82f6;">Bz</div>
+    </div>
+
+    <div class="mag-bottomline"></div>
+  </div>
+card_mod:
+  style: |
+    ha-card {
+      background:#29364c !important;
+      padding:2px !important;
+      border:none !important;
+      border-radius:40px !important;
+      box-shadow:none !important;
+      overflow:hidden !important;
+    }

@@ -1,0 +1,300 @@
+type: custom:html-template-card
+ignore_line_breaks: true
+entities:
+- input_boolean.tric_uv_available
+- input_number.tric_uv_raw
+- input_number.tric_uv_index
+- input_datetime.tric_uv_time
+- sensor.tricorder_mission_scans
+content: |
+  {% set helper_available = is_state('input_boolean.tric_uv_available','on') %} {% set helper_raw = states('input_number.tric_uv_raw') | float(0) %} {% set helper_index = states('input_number.tric_uv_index') | float(0) %}
+  {% set raw_time = states('input_datetime.tric_uv_time') %} {% set scan_time = as_datetime(raw_time) %} {% if scan_time %}
+    {% set recorded = scan_time.strftime('%m/%d/%Y %H:%M:%S') %}
+    {% set scan_end_ts = as_timestamp(scan_time) %}
+  {% else %}
+    {% set recorded = raw_time %}
+    {% set scan_end_ts = none %}
+  {% endif %}
+  {% set scan_results =
+       state_attr('sensor.tricorder_mission_scans', 'results') or [] %}
+  {% set scan_series = [] %} {% if scan_results and scan_results[0].get('series') %}
+    {% set scan_series = scan_results[0]['series'] %}
+  {% endif %}
+  {% set uv = namespace(columns=[], rows=[]) %} {% for series in scan_series %}
+    {% if series.get('name', '') == 'tricorder_uv' %}
+      {% set uv.columns = series.get('columns', []) %}
+      {% set uv.rows = series.get('values', []) %}
+    {% endif %}
+  {% endfor %}
+  {# Prefer the scan that matches the helper time; for an older selected
+     Mission, fall back to that Mission's newest contiguous UV cluster. #}
+  {% set candidates = namespace(rows=[]) %} {% if scan_end_ts is not none and 'time' in uv.columns %}
+    {% set ti = uv.columns.index('time') %}
+    {% for row in uv.rows %}
+      {% set dt = as_datetime(row[ti]) %}
+      {% if dt %}
+        {% set ts = as_timestamp(dt) %}
+        {% if ts >= scan_end_ts - 12 and ts <= scan_end_ts + 2 %}
+          {% set candidates.rows = candidates.rows + [row] %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {% set cluster = namespace(rows=[], active=true, last_ts=none) %} {% if candidates.rows and 'time' in uv.columns %}
+    {% set ti = uv.columns.index('time') %}
+    {% for row in candidates.rows | reverse %}
+      {% if cluster.active %}
+        {% set dt = as_datetime(row[ti]) %}
+        {% if dt %}
+          {% set ts = as_timestamp(dt) %}
+          {% if cluster.last_ts is none or (cluster.last_ts - ts) <= 2.5 %}
+            {% set cluster.rows = [row] + cluster.rows %}
+            {% set cluster.last_ts = ts %}
+          {% else %}
+            {% set cluster.active = false %}
+          {% endif %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {% if not cluster.rows and uv.rows and 'time' in uv.columns %}
+    {% set ti = uv.columns.index('time') %}
+    {% set fallback = namespace(rows=[], active=true, last_ts=none) %}
+    {% for row in uv.rows | reverse %}
+      {% if fallback.active %}
+        {% set dt = as_datetime(row[ti]) %}
+        {% if dt %}
+          {% set ts = as_timestamp(dt) %}
+          {% if fallback.last_ts is none or (fallback.last_ts - ts) <= 2.5 %}
+            {% set fallback.rows = [row] + fallback.rows %}
+            {% set fallback.last_ts = ts %}
+          {% else %}
+            {% set fallback.active = false %}
+          {% endif %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+    {% set cluster.rows = fallback.rows %}
+  {% endif %}
+  {% set scan_rows = cluster.rows %}
+  {% if scan_rows and 'time' in uv.columns %}
+    {% set selected_dt = as_datetime(scan_rows[-1][uv.columns.index('time')]) %}
+    {% if selected_dt %}
+      {% set recorded = selected_dt.strftime('%m/%d/%Y %H:%M:%S') %}
+    {% endif %}
+  {% endif %}
+  {% set scan_has_uv = (scan_rows | count) > 0 %} {% set latest = namespace(raw=helper_raw, index=helper_index, available=(scan_has_uv or helper_available)) %} {% if scan_rows %}
+    {% set last = scan_rows[-1] %}
+    {% if 'uv_raw' in uv.columns and last[uv.columns.index('uv_raw')] is not none %}
+      {% set latest.raw = last[uv.columns.index('uv_raw')] | float(0) %}
+    {% endif %}
+    {% if 'uv_index' in uv.columns and last[uv.columns.index('uv_index')] is not none %}
+      {% set latest.index = last[uv.columns.index('uv_index')] | float(0) %}
+    {% endif %}
+  {% endif %}
+  {% macro sensor_popup(field, label, unit, color, decimals=2) %}
+    {% set ns = namespace(points=[], values=[], first_ts=none, last_ts=none) %}
+
+    {% if field in uv.columns and 'time' in uv.columns %}
+      {% set fi = uv.columns.index(field) %}
+      {% set ti = uv.columns.index('time') %}
+
+      {% for row in scan_rows %}
+        {% if row[fi] is not none %}
+          {% set dt = as_datetime(row[ti]) %}
+          {% if dt %}
+            {% set ts = as_timestamp(dt) %}
+            {% set raw_v = row[uv.columns.index('uv_raw')] if 'uv_raw' in uv.columns else none %}
+            {% set index_v = row[uv.columns.index('uv_index')] if 'uv_index' in uv.columns else none %}
+            {% set mission_v = row[uv.columns.index('elapsed_seconds')] if 'elapsed_seconds' in uv.columns else none %}
+            {% if ns.first_ts is none %}{% set ns.first_ts = ts %}{% endif %}
+            {% set ns.last_ts = ts %}
+            {% set ns.values = ns.values + [row[fi] | float(0)] %}
+            {% set ns.points = ns.points + [{
+              'ts': ts,
+              'value': row[fi] | float(0),
+              'time': dt.strftime('%H:%M:%S'),
+              'raw': raw_v,
+              'index': index_v,
+              'mission': mission_v
+            }] %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+
+    {% set count = ns.points | count %}
+
+    {% if count %}
+      {% set minval = ns.values | min %}
+      {% set maxval = ns.values | max %}
+      {% set avgval = (ns.values | sum) / count %}
+      {% set span = (ns.last_ts - ns.first_ts) if count > 1 else 0 %}
+      {% set duration = ((span + 1) | round(0) | int) if count > 1 else 1 %}
+
+      {% set picks = namespace(mini=1, maxi=1, min_found=false, max_found=false) %}
+      {% set graph = namespace(coords=[]) %}
+
+      {% for p in ns.points %}
+        {% if not picks.min_found and p['value'] == minval %}
+          {% set picks.mini = loop.index %}
+          {% set picks.min_found = true %}
+        {% endif %}
+        {% if not picks.max_found and p['value'] == maxval %}
+          {% set picks.maxi = loop.index %}
+          {% set picks.max_found = true %}
+        {% endif %}
+
+        {% set x = 150 if span <= 0 else 14 + (((p['ts'] - ns.first_ts) / span) * 272) %}
+        {% set y = 70 if maxval == minval else 126 - (((p['value'] - minval) / (maxval - minval)) * 106) %}
+        {% set graph.coords = graph.coords + [{
+          'x': x | round(1),
+          'y': y | round(1),
+          'left': ((x / 300) * 100) | round(3),
+          'top': ((y / 150) * 100) | round(3),
+          'offset': (p['ts'] - ns.first_ts) | round(1),
+          'index': loop.index,
+          'p': p
+        }] %}
+      {% endfor %}
+
+      <div class="uvp">
+        <style>
+          .uvp{background:#000;color:#fff;padding:16px;font-family:Antonio,Arial Narrow,sans-serif;box-sizing:border-box}
+          .uvp *{box-sizing:border-box}.ur{position:absolute;opacity:0;pointer-events:none}.uc{cursor:pointer}.uc:hover{filter:brightness(1.12)}
+          .usel{display:none}.ublank{display:block;text-align:center;color:#777;font-size:10px;font-weight:800;padding:16px 0}
+          .ubar{height:7px;background:{{ color }};border-radius:8px;margin-bottom:13px}.utitle{text-align:center;font-size:22px;font-weight:900;letter-spacing:1px}
+          .usub{text-align:center;color:{{ color }};font-size:11px;font-weight:800;letter-spacing:1px;margin:3px 0 14px}
+          .usum{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}.utile{background:#111;border-radius:11px;padding:8px;text-align:center}
+          .uk{font-size:8px;color:#777}.uv{font-size:15px;font-weight:900}.uu{font-size:8px;color:#aaa}
+          .usw{background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:9px;margin-bottom:12px;min-height:55px}
+          .ush{display:flex;justify-content:space-between;font-size:13px;color:#ccc;margin-bottom:7px}.ugrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+          .ubox{background:#050505;border-radius:8px;padding:8px;text-align:center}.ugraph{background:#080808;border:1px solid #222;border-radius:14px;padding:10px}
+          .ugp{position:relative;width:100%;height:260px}.uaxis{display:flex;justify-content:space-between;color:#aaa;font-size:14px;font-weight:800;margin-top:4px}
+          .ustamp{font-size:15px;color:#ddd}.urows{margin-top:12px;background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:8px}
+          .urh{font-size:9px;color:#888;font-weight:800;letter-spacing:1px;margin-bottom:4px}.urow{display:grid;grid-template-columns:72px 1fr 1fr;gap:8px;padding:7px 5px;border-top:1px solid #181818;font-size:11px}
+          .ulast{display:block;margin-top:10px;text-align:center;font-size:11px;color:#888}
+          {% for c in graph.coords %}
+            #{{ field }}-p{{ c['index'] }}:checked~.usw .ublank{display:none}
+            #{{ field }}-p{{ c['index'] }}:checked~.usw .s{{ c['index'] }}{display:block}
+            #{{ field }}-p{{ c['index'] }}:checked~.ugraph .d{{ c['index'] }}{stroke:#fff;stroke-width:4;filter:drop-shadow(0 0 4px {{ color }})}
+            #{{ field }}-p{{ c['index'] }}:checked~.urows .r{{ c['index'] }}{background:#171717;color:#fff}
+          {% endfor %}
+        </style>
+
+        {% for c in graph.coords %}
+          <input class="ur" type="radio" name="{{ field }}-p" id="{{ field }}-p{{ c['index'] }}">
+        {% endfor %}
+
+        <div class="ubar"></div>
+        <div class="utitle">{{ label }}</div>
+        <div class="usub">{{ duration }} SECOND SCAN</div>
+
+        <div class="usum">
+          <label class="utile uc" for="{{ field }}-p{{ picks.mini }}"><div class="uk">MIN</div><div class="uv">{{ minval | round(decimals) }} <span class="uu">{{ unit }}</span></div></label>
+          <div class="utile"><div class="uk">AVG</div><div class="uv">{{ avgval | round(decimals) }} <span class="uu">{{ unit }}</span></div></div>
+          <label class="utile uc" for="{{ field }}-p{{ picks.maxi }}"><div class="uk">MAX</div><div class="uv">{{ maxval | round(decimals) }} <span class="uu">{{ unit }}</span></div></label>
+          <div class="utile"><div class="uk">SAMPLES</div><div class="uv">{{ count }}</div></div>
+        </div>
+
+        <div class="usw">
+          <div class="ublank">TAP A POINT OR SAMPLE TO INSPECT</div>
+          {% for c in graph.coords %}
+            <div class="usel s{{ c['index'] }}">
+              <div class="ush"><b style="color:{{ color }}">SAMPLE {{ c['index'] }}</b><span>{{ c['p']['time'] }} · +{{ c['offset'] }} s</span></div>
+              <div class="ugrid">
+                <div class="ubox"><div class="uk">UV INDEX</div><div class="uv">{{ c['p']['index'] | round(3) if c['p']['index'] is not none else '--' }}</div></div>
+                <div class="ubox"><div class="uk">UV RAW</div><div class="uv">{{ c['p']['raw'] | round(0) | int if c['p']['raw'] is not none else '--' }}</div></div>
+              </div>
+              <div class="uk" style="text-align:center;margin-top:6px">MISSION {% if c['p']['mission'] is not none %}{{ c['p']['mission'] | round(1) }} s{% else %}--{% endif %}</div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="ugraph">
+          <div class="ugp">
+            <svg viewBox="0 0 300 150" preserveAspectRatio="none" style="width:100%;height:260px;display:block;position:absolute;inset:0">
+              <line x1="14" y1="126" x2="286" y2="126" stroke="#333" stroke-width="1"/>
+              <line x1="14" y1="20" x2="14" y2="126" stroke="#333" stroke-width="1"/>
+              {% if count > 1 %}
+                <polyline points="{% for c in graph.coords %}{{ c['x'] }},{{ c['y'] }} {% endfor %}" fill="none" stroke="{{ color }}" stroke-width="3" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
+              {% endif %}
+              {% for c in graph.coords %}
+                <circle class="d{{ c['index'] }}" cx="{{ c['x'] }}" cy="{{ c['y'] }}" r="5" fill="{{ color }}"/>
+              {% endfor %}
+            </svg>
+            {% for c in graph.coords %}
+              <label class="uc" for="{{ field }}-p{{ c['index'] }}" style="position:absolute;left:{{ c['left'] }}%;top:{{ c['top'] }}%;width:30px;height:30px;transform:translate(-50%,-50%);border-radius:50%;z-index:3"></label>
+            {% endfor %}
+          </div>
+          <div class="uaxis"><span>0 s</span><span class="ustamp">{{ recorded }}</span><span>{{ duration }} s</span></div>
+        </div>
+
+        <div class="urows">
+          <div class="urh">SAMPLE DETAIL</div>
+          {% for c in graph.coords %}
+            <label class="urow uc r{{ c['index'] }}" for="{{ field }}-p{{ c['index'] }}">
+              <span style="color:#aaa">{{ c['p']['time'] }}</span>
+              <span>INDEX {{ c['p']['index'] | round(3) if c['p']['index'] is not none else '--' }}</span>
+              <span>RAW {{ c['p']['raw'] | round(0) | int if c['p']['raw'] is not none else '--' }}</span>
+            </label>
+          {% endfor %}
+        </div>
+
+        <label class="ulast uc" for="{{ field }}-p{{ count }}">LAST {{ ns.values[-1] | round(decimals) }} {{ unit }}</label>
+        <div class="ubar" style="margin-top:13px;margin-bottom:0"></div>
+      </div>
+
+    {% else %}
+      <div style="background:#000;color:#fff;padding:22px;font-family:Antonio,Arial Narrow,sans-serif;text-align:center">
+        <div style="font-size:20px;font-weight:900">{{ label }}</div>
+        <div style="color:#888;margin-top:12px">No time-series samples found for this scan.</div>
+      </div>
+    {% endif %}
+  {% endmacro %}
+  {% set index_popup = sensor_popup('uv_index','UV INDEX','','#8296ff',3) %} {% set raw_popup = sensor_popup('uv_raw','UV RAW','','#f59e0b',0) %}
+  <style>
+    .uv-card{background:#000;border:0;border-radius:38px;padding:10px 18px;overflow:hidden;font-family:"Antonio","Arial Narrow",sans-serif;box-sizing:border-box}
+    .uv-topline{height:7px;background:#8296ff;margin:-5px -18px 10px}
+    .uv-bottomline{height:7px;background:#8e87b6;margin:10px -18px -5px}
+    .uv-title{color:#fff;text-align:center;font-size:18px;font-weight:800;letter-spacing:1px;margin:0 0 7px}
+    .uv-row{display:grid;height:30px;margin:4px 0;cursor:pointer;user-select:none}.uv-row:hover{filter:brightness(1.08)}
+    .uv-row.left{grid-template-columns:52px 1fr 1.75fr}.uv-row.right{grid-template-columns:1.75fr 1fr 52px}
+    .uv-cap{color:#000;display:flex;align-items:center;justify-content:center}.leftcap{border-radius:15px 0 0 15px}.rightcap{border-radius:0 15px 15px 0}
+    .uv-value{background:#000;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;white-space:nowrap}
+    .uv-label{color:#000;display:flex;align-items:center;justify-content:center;text-align:center;font-size:9px;font-weight:800;padding:0 6px}
+    .round-right{border-radius:0 15px 15px 0}.round-left{border-radius:15px 0 0 15px}
+    .uv-status{margin-top:6px;text-align:center;font-size:9px;font-weight:800;letter-spacing:1px;color:{{ '#22c55e' if latest.available else '#ef4444' }}}
+    ha-icon{--mdc-icon-size:16px}
+  </style>
+  <div class="uv-card">
+    <div class="uv-topline"></div>
+    <div class="uv-title">ULTRAVIOLET</div>
+
+    <div class="uv-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"UV INDEX SCAN",content:{{ index_popup | to_json }},initial_style:"normal"}}}}))'>
+      <div class="uv-cap leftcap" style="background:#8296ff"><ha-icon icon="mdi:weather-sunny-alert"></ha-icon></div>
+      <div class="uv-value">{{ latest.index | round(3) }}</div>
+      <div class="uv-label round-right" style="background:#8296ff">UV INDEX</div>
+    </div>
+
+    <div class="uv-row right"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"UV RAW SCAN",content:{{ raw_popup | to_json }},initial_style:"normal"}}}}))'>
+      <div class="uv-label round-left" style="background:#f59e0b">UV RAW</div>
+      <div class="uv-value">{{ latest.raw | round(0) | int }}</div>
+      <div class="uv-cap rightcap" style="background:#f59e0b"><ha-icon icon="mdi:chart-bell-curve-cumulative"></ha-icon></div>
+    </div>
+
+    <div class="uv-status">{{ 'SENSOR AVAILABLE' if latest.available else 'SENSOR UNAVAILABLE' }}</div>
+    <div class="uv-bottomline"></div>
+  </div>
+card_mod:
+  style: |
+    ha-card {
+      background:#29364c !important;
+      padding:2px !important;
+      border:none !important;
+      border-radius:40px !important;
+      box-shadow:none !important;
+      overflow:hidden !important;
+    }

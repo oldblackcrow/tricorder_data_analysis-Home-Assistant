@@ -1,0 +1,48 @@
+tricorder_archive_selected_mission:
+  alias: Tricorder Archive Selected Mission
+  sequence:
+  - action: shell_command.tricorder_archive_mission
+  - delay:
+      milliseconds: 500
+  - action: homeassistant.update_entity
+    data:
+      entity_id: sensor.tricorder_mission_catalog
+  - action: input_text.set_value
+    target:
+      entity_id: input_text.tric_archive_mission_id
+    data:
+      value: ''
+tricorder_restore_archived_mission:
+  alias: Tricorder Restore Archived Mission
+  fields:
+    mission_id:
+      description: Archived mission ID
+      required: true
+  sequence:
+  - action: shell_command.tricorder_restore_mission
+    data:
+      mission_id: '{{ mission_id }}'
+  - delay:
+      milliseconds: 500
+  - action: homeassistant.update_entity
+    target:
+      entity_id:
+      - sensor.tricorder_mission_catalog
+      - sensor.tricorder_archived_missions
+tricorder_delete_archived_mission:
+  alias: Tricorder Delete Archived Mission
+  fields:
+    mission_id:
+      description: Archived mission ID
+      required: true
+  sequence:
+  - action: shell_command.tricorder_delete_mission
+    data:
+      mission_id: '{{ mission_id }}'
+  - delay:
+      milliseconds: 500
+  - action: homeassistant.update_entity
+    target:
+      entity_id:
+      - sensor.tricorder_mission_catalog
+      - sensor.tricorder_archived_missions

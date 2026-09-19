@@ -1,0 +1,243 @@
+input_number:
+
+  tric_temperature:
+    name: Temperature
+    min: -100
+    max: 300
+    step: 0.1
+    unit_of_measurement: "°F"
+    mode: box
+
+  tric_humidity:
+    name: Humidity
+    min: 0
+    max: 100
+    step: 0.1
+    unit_of_measurement: "%"
+    mode: box
+
+  tric_pressure:
+    name: Pressure
+    min: 0
+    max: 2000
+    step: 0.1
+    unit_of_measurement: "hPa"
+    mode: box
+
+  tric_altitude:
+    name: Altitude
+    min: -2000
+    max: 20000
+    step: 0.1
+    unit_of_measurement: "m"
+    mode: box
+
+  tric_lux:
+    name: Light
+    min: 0
+    max: 200000
+    step: 0.1
+    unit_of_measurement: "lx"
+    mode: box
+
+  tric_proximity:
+    name: Proximity
+    min: 0
+    max: 255
+    step: 1
+    mode: box
+
+  tric_eco2:
+    name: eCO2
+    min: 0
+    max: 100000
+    step: 1
+    unit_of_measurement: "ppm"
+    mode: box
+
+  tric_tvoc:
+    name: TVOC
+    min: 0
+    max: 100000
+    step: 1
+    unit_of_measurement: "ppb"
+    mode: box
+
+  tric_heading:
+    name: Heading
+    min: 0
+    max: 360
+    step: 0.1
+    unit_of_measurement: "°"
+    mode: box
+
+  tric_magnetic_field:
+    name: Magnetic Field
+    min: 0
+    max: 10000
+    step: 0.1
+    unit_of_measurement: "µT"
+    mode: box
+
+  tric_accel_x:
+    name: Acceleration X
+    min: -200
+    max: 200
+    step: 0.001
+    unit_of_measurement: "m/s²"
+    mode: box
+
+  tric_accel_y:
+    name: Acceleration Y
+    min: -200
+    max: 200
+    step: 0.001
+    unit_of_measurement: "m/s²"
+    mode: box
+
+  tric_accel_z:
+    name: Acceleration Z
+    min: -200
+    max: 200
+    step: 0.001
+    unit_of_measurement: "m/s²"
+    mode: box
+
+  tric_audio_relative_db:
+    name: Audio Relative
+    min: 0
+    max: 150
+    step: 0.1
+    unit_of_measurement: "dB"
+    mode: box
+
+  tric_audio_peak_db:
+    name: Audio Peak
+    min: 0
+    max: 150
+    step: 0.1
+    unit_of_measurement: "dB"
+    mode: box
+
+  tric_color_red:
+    name: Color Red
+    min: 0
+    max: 65535
+    step: 1
+    mode: box
+
+  tric_color_green:
+    name: Color Green
+    min: 0
+    max: 65535
+    step: 1
+    mode: box
+
+  tric_color_blue:
+    name: Color Blue
+    min: 0
+    max: 65535
+    step: 1
+    mode: box
+
+  tric_color_clear:
+    name: Color Clear
+    min: 0
+    max: 65535
+    step: 1
+    mode: box
+
+
+  # ==========================================================
+  # MISSION TIMELINE POSITIONS
+  # Stored elapsed time when each scan was actually recorded.
+  # ==========================================================
+
+  tric_atmosphere_elapsed:
+    name: Atmosphere Mission Elapsed
+    min: -1
+    max: 604800
+    step: 0.1
+    unit_of_measurement: "s"
+    mode: box
+
+  tric_orientation_elapsed:
+    name: Orientation Mission Elapsed
+    min: -1
+    max: 604800
+    step: 0.1
+    unit_of_measurement: "s"
+    mode: box
+
+  tric_audio_elapsed:
+    name: Audio Mission Elapsed
+    min: -1
+    max: 604800
+    step: 0.1
+    unit_of_measurement: "s"
+    mode: box
+
+  tric_magnetic_elapsed:
+    name: Magnetic Mission Elapsed
+    min: -1
+    max: 604800
+    step: 0.1
+    unit_of_measurement: "s"
+    mode: box
+
+  tric_color_elapsed:
+    name: Color Mission Elapsed
+    min: -1
+    max: 604800
+    step: 0.1
+    unit_of_measurement: "s"
+    mode: box
+
+
+input_boolean:
+
+  tric_handheld_linked:
+    name: Handheld Linked
+
+
+input_text:
+
+  tric_scan_type:
+    name: Scan Type
+    max: 50
+
+
+input_datetime:
+
+  # Existing compatibility helper.
+  tric_scan_time:
+    name: Scan Time
+    has_date: true
+    has_time: true
+
+  # Individual recorded scan times.
+
+  tric_atmosphere_time:
+    name: Atmosphere Scan Time
+    has_date: true
+    has_time: true
+
+  tric_orientation_time:
+    name: Orientation Scan Time
+    has_date: true
+    has_time: true
+
+  tric_audio_time:
+    name: Audio Scan Time
+    has_date: true
+    has_time: true
+
+  tric_magnetic_time:
+    name: Magnetic Scan Time
+    has_date: true
+    has_time: true
+
+  tric_color_time:
+    name: Color Scan Time
+    has_date: true
+    has_time: true

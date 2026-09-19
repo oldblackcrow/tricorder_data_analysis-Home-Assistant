@@ -1,0 +1,61 @@
+input_boolean:
+  tric_mission_active:
+    name: Mission Active
+
+
+input_text:
+  tric_mission_code:
+    name: Mission Code
+    max: 100
+
+  tric_mission_name:
+    name: Mission Name
+    max: 100
+
+  tric_mission_status:
+    name: Mission Status
+    max: 50
+
+  tric_mission_last_event:
+    name: Mission Last Event
+    max: 50
+
+
+input_number:
+  # Latest mission event position.
+  # Kept for compatibility with the existing Mission card.
+  tric_mission_elapsed:
+    name: Mission Elapsed
+    min: 0
+    max: 604800
+    step: 0.1
+    unit_of_measurement: "s"
+    mode: box
+
+  # Fixed mission position of the most recently uploaded radiation scan.
+  tric_radiation_elapsed:
+    name: Radiation Mission Elapsed
+    min: -1
+    max: 604800
+    step: 0.1
+    unit_of_measurement: "s"
+    mode: box
+
+
+input_datetime:
+  # Latest uploaded mission event.
+  tric_mission_event_time:
+    name: Mission Event Time
+    has_date: true
+    has_time: true
+
+  # Permanent mission boundaries.
+  tric_mission_start_time:
+    name: Mission Start Time
+    has_date: true
+    has_time: true
+
+  tric_mission_end_time:
+    name: Mission End Time
+    has_date: true
+    has_time: true

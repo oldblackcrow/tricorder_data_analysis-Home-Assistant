@@ -1,0 +1,867 @@
+type: custom:html-template-card
+ignore_line_breaks: true
+entities:
+- sensor.tricorder_mission_catalog
+- input_text.tric_archive_mission_id
+- input_text.tric_archive_compare_mission_id
+- sensor.tricorder_mission_events
+- sensor.tricorder_mission_scans
+- sensor.tricorder_comparison_mission_scans
+content: |
+  {# ======================================================== #} {# MISSION A / MISSION B DATA                               #} {# ======================================================== #}
+  {% set aid = states('input_text.tric_archive_mission_id') %} {% set bid = states('input_text.tric_archive_compare_mission_id') %}
+  {% set event_results =
+       state_attr('sensor.tricorder_mission_events', 'results') or [] %}
+
+  {% set event_series = [] %} {% if event_results and event_results[0].get('series') %}
+    {% set event_series = event_results[0]['series'] %}
+  {% endif %}
+  {% set event_columns = [] %} {% set event_values = [] %}
+  {% if event_series %}
+    {% set event_columns = event_series[0].get('columns', []) %}
+    {% set event_values = event_series[0].get('values', []) %}
+  {% endif %}
+
+  {% set ar =
+       state_attr('sensor.tricorder_mission_scans', 'results') or [] %}
+  {% set br =
+       state_attr('sensor.tricorder_comparison_mission_scans', 'results') or [] %}
+
+  {% set aseries = [] %} {% set bseries = [] %}
+  {% if ar and ar[0].get('series') %}
+    {% set aseries = ar[0]['series'] %}
+  {% endif %}
+  {% if br and br[0].get('series') %}
+    {% set bseries = br[0]['series'] %}
+  {% endif %}
+
+  {# Mission metadata comes from the catalog so same-name missions
+     remain distinguishable by their start date/time. #}
+
+  {% set cr =
+       state_attr('sensor.tricorder_mission_catalog', 'results') or [] %}
+  {% set cc = [] %} {% set cv = [] %}
+  {% if cr and cr[0].get('series') %}
+    {% set cc = cr[0]['series'][0].get('columns', []) %}
+    {% set cv = cr[0]['series'][0].get('values', []) %}
+  {% endif %}
+  {% set ma = namespace(code='MISSION A', name='UNKNOWN', time='') %} {% set mb = namespace(code='MISSION B', name='NOT SELECTED', time='') %}
+  {% if cv
+        and 'mission_code' in cc
+        and 'mission_id' in cc
+        and 'mission_name' in cc
+        and 'time' in cc %}
+
+    {% set ci = cc.index('mission_code') %}
+    {% set ii = cc.index('mission_id') %}
+    {% set ni = cc.index('mission_name') %}
+    {% set ti = cc.index('time') %}
+
+    {% for row in cv %}
+      {% if row[ii] == aid %}
+        {% set ma.code = row[ci] %}
+        {% set ma.name = row[ni] | replace('_',' ') %}
+        {% set ma.time = row[ti] %}
+      {% endif %}
+
+      {% if row[ii] == bid %}
+        {% set mb.code = row[ci] %}
+        {% set mb.name = row[ni] | replace('_',' ') %}
+        {% set mb.time = row[ti] %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {# ======================================================== #} {# TREND ROW MACRO                                          #} {# ======================================================== #}
+  {% macro trend(series_name, field, label, unit, color, decimals=1) %}
+
+    {% set sa = namespace(columns=[], rows=[]) %}
+    {% set sb = namespace(columns=[], rows=[]) %}
+
+    {% for series in aseries %}
+      {% if series.get('name', '') == series_name %}
+        {% set sa.columns = series.get('columns', []) %}
+        {% set sa.rows = series.get('values', []) %}
+      {% endif %}
+    {% endfor %}
+
+    {% for series in bseries %}
+      {% if series.get('name', '') == series_name %}
+        {% set sb.columns = series.get('columns', []) %}
+        {% set sb.rows = series.get('values', []) %}
+      {% endif %}
+    {% endfor %}
+
+
+    {% set pa = namespace(points=[]) %}
+    {% set pb = namespace(points=[]) %}
+
+    {% if field in sa.columns and 'elapsed_seconds' in sa.columns %}
+      {% set afi = sa.columns.index(field) %}
+      {% set aei = sa.columns.index('elapsed_seconds') %}
+
+      {% for row in sa.rows %}
+        {% if row[afi] is not none %}
+          {% set pa.points =
+            pa.points + [{
+              'elapsed': row[aei] | float(0),
+              'value': row[afi] | float(0)
+            }] %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+
+    {% if field in sb.columns and 'elapsed_seconds' in sb.columns %}
+      {% set bfi = sb.columns.index(field) %}
+      {% set bei = sb.columns.index('elapsed_seconds') %}
+
+      {% for row in sb.rows %}
+        {% if row[bfi] is not none %}
+          {% set pb.points =
+            pb.points + [{
+              'elapsed': row[bei] | float(0),
+              'value': row[bfi] | float(0)
+            }] %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+
+
+    {% if pa.points or pb.points %}
+
+      {% set av = pa.points | map(attribute='value') | list %}
+      {% set bv = pb.points | map(attribute='value') | list %}
+      {% set ae = pa.points | map(attribute='elapsed') | list %}
+      {% set be = pb.points | map(attribute='elapsed') | list %}
+
+      {% set acount = av | count %}
+      {% set bcount = bv | count %}
+
+      {% set alatest = av[-1] if av else none %}
+      {% set blatest = bv[-1] if bv else none %}
+
+      {% set aavg = ((av | sum) / acount) if acount else none %}
+      {% set bavg = ((bv | sum) / bcount) if bcount else none %}
+
+      {% set allv = av + bv %}
+      {% set alle = ae + be %}
+
+      {% set minv = allv | min %}
+      {% set maxv = allv | max %}
+      {% set maxe = alle | max if alle else 0 %}
+
+      {% set ga = namespace(points=[], coords=[]) %}
+      {% set gb = namespace(points=[], coords=[]) %}
+
+
+      {% for p in pa.points %}
+        {% if acount == 1 %}
+          {% set x = 78 %}
+        {% elif maxe > 0 %}
+          {% set x = 10 + (p.elapsed / maxe * 280) %}
+        {% else %}
+          {% set x = 78 %}
+        {% endif %}
+
+        {% if maxv == minv %}
+          {% set y = 35 %}
+        {% else %}
+          {% set y = 60 - ((p.value - minv) / (maxv - minv) * 50) %}
+        {% endif %}
+
+        {% set ga.points = ga.points + [{'x':x,'y':y}] %}
+        {% set ga.coords =
+          ga.coords + [
+            (x|round(1)|string) ~ ',' ~ (y|round(1)|string)
+          ] %}
+      {% endfor %}
+
+
+      {% for p in pb.points %}
+        {% if bcount == 1 %}
+          {% set x = 222 %}
+        {% elif maxe > 0 %}
+          {% set x = 10 + (p.elapsed / maxe * 280) %}
+        {% else %}
+          {% set x = 222 %}
+        {% endif %}
+
+        {% if maxv == minv %}
+          {% set y = 35 %}
+        {% else %}
+          {% set y = 60 - ((p.value - minv) / (maxv - minv) * 50) %}
+        {% endif %}
+
+        {% set gb.points = gb.points + [{'x':x,'y':y}] %}
+        {% set gb.coords =
+          gb.coords + [
+            (x|round(1)|string) ~ ',' ~ (y|round(1)|string)
+          ] %}
+      {% endfor %}
+
+
+      {% set popup_html %}
+
+        <div style="
+          background:#000;
+          color:#fff;
+          padding:16px;
+          font-family:Arial,sans-serif;
+        ">
+
+          <div style="
+            font-size:20px;
+            font-weight:800;
+          ">
+            {{ label }} · A / B
+          </div>
+
+          <div style="
+            margin-top:4px;
+            margin-bottom:14px;
+            font-size:11px;
+          ">
+            <span style="color:#8296ff;">
+              A · {{ ma.code }}
+              {% if ma.time %} · {{ ma.time[5:10] | replace('-','/') }} {{ ma.time[11:16] }}{% endif %}
+            </span>
+
+            &nbsp;&nbsp;vs&nbsp;&nbsp;
+
+            <span style="color:#f59e0b;">
+              B · {{ mb.code }}
+              {% if mb.time %} · {{ mb.time[5:10] | replace('-','/') }} {{ mb.time[11:16] }}{% endif %}
+            </span>
+          </div>
+
+
+          <div style="
+            display:grid;
+            grid-template-columns:1fr 1fr 1fr;
+            gap:6px;
+            margin-bottom:12px;
+          ">
+
+            <div style="
+              background:#111;
+              border-radius:12px;
+              padding:9px;
+            ">
+              <div style="font-size:9px;color:#8296ff;">
+                MISSION A
+              </div>
+              <div style="font-size:18px;font-weight:800;">
+                {% if aavg is not none %}
+                  {{ aavg | round(decimals) }} {{ unit }}
+                {% else %}
+                  --
+                {% endif %}
+              </div>
+              <div style="font-size:9px;color:#777;">
+                {{ acount }} sample{% if acount != 1 %}s{% endif %}
+              </div>
+            </div>
+
+
+            <div style="
+              background:#111;
+              border-radius:12px;
+              padding:9px;
+            ">
+              <div style="font-size:9px;color:#f59e0b;">
+                MISSION B
+              </div>
+              <div style="font-size:18px;font-weight:800;">
+                {% if bavg is not none %}
+                  {{ bavg | round(decimals) }} {{ unit }}
+                {% else %}
+                  --
+                {% endif %}
+              </div>
+              <div style="font-size:9px;color:#777;">
+                {{ bcount }} sample{% if bcount != 1 %}s{% endif %}
+              </div>
+            </div>
+
+
+            <div style="
+              background:#111;
+              border-radius:12px;
+              padding:9px;
+            ">
+              <div style="font-size:9px;color:#aaa;">
+                Δ B − A
+              </div>
+              <div style="font-size:18px;font-weight:800;">
+                {% if aavg is not none and bavg is not none %}
+                  {% set delta = bavg - aavg %}
+                  {% if delta > 0 %}+{% endif %}{{ delta | round(decimals) }} {{ unit }}
+                {% else %}
+                  --
+                {% endif %}
+              </div>
+            </div>
+
+          </div>
+
+
+          <div style="
+            border:1px solid #222;
+            border-radius:12px;
+            padding:8px;
+            background:#080808;
+          ">
+
+            <svg
+              viewBox="0 0 300 70"
+              style="width:100%;height:180px;"
+            >
+
+              <line x1="10" y1="60" x2="290" y2="60" stroke="#333" />
+
+              {% if acount == 1 %}
+                {% set p = ga.points[0] %}
+                <line
+                  x1="15" y1="{{ p.y }}"
+                  x2="140" y2="{{ p.y }}"
+                  stroke="#8296ff"
+                  stroke-width="3"
+                  stroke-linecap="round"
+                />
+                <circle cx="78" cy="{{ p.y }}" r="4" fill="#8296ff" />
+              {% elif acount > 1 %}
+                <polyline
+                  points="{{ ga.coords | join(' ') }}"
+                  fill="none"
+                  stroke="#8296ff"
+                  stroke-width="2.5"
+                  stroke-linejoin="round"
+                  stroke-linecap="round"
+                />
+                {% for p in ga.points %}
+                  <circle cx="{{ p.x }}" cy="{{ p.y }}" r="3" fill="#8296ff" />
+                {% endfor %}
+              {% endif %}
+
+
+              {% if bcount == 1 %}
+                {% set p = gb.points[0] %}
+                <line
+                  x1="160" y1="{{ p.y }}"
+                  x2="285" y2="{{ p.y }}"
+                  stroke="#f59e0b"
+                  stroke-width="3"
+                  stroke-linecap="round"
+                />
+                <circle cx="222" cy="{{ p.y }}" r="4" fill="#f59e0b" />
+              {% elif bcount > 1 %}
+                <polyline
+                  points="{{ gb.coords | join(' ') }}"
+                  fill="none"
+                  stroke="#f59e0b"
+                  stroke-width="2.5"
+                  stroke-linejoin="round"
+                  stroke-linecap="round"
+                />
+                {% for p in gb.points %}
+                  <circle cx="{{ p.x }}" cy="{{ p.y }}" r="3" fill="#f59e0b" />
+                {% endfor %}
+              {% endif %}
+
+            </svg>
+
+          </div>
+
+
+          <div style="
+            display:flex;
+            justify-content:center;
+            gap:25px;
+            margin-top:10px;
+            font-size:11px;
+          ">
+            <span style="color:#8296ff;">● MISSION A</span>
+            <span style="color:#f59e0b;">● MISSION B</span>
+          </div>
+
+        </div>
+
+      {% endset %}
+
+
+      <div
+        class="trend-row"
+        onclick='this.dispatchEvent(
+          new CustomEvent(
+            "ll-custom",
+            {
+              bubbles:true,
+              composed:true,
+              detail:{
+                browser_mod:{
+                  service:"browser_mod.popup",
+                  data:{
+                    title:{{ (label ~ " · A / B") | to_json }},
+                    content:{{ popup_html | to_json }},
+                    initial_style:"normal"
+                  }
+                }
+              }
+            }
+          )
+        )'
+      >
+
+        <div
+          class="trend-label"
+          style="background:{{ color }};"
+        >
+          {{ label }}
+        </div>
+
+
+        <div class="trend-ab trend-a">
+          <span>A</span>
+          {% if alatest is not none %}
+            {{ alatest | round(decimals) }}
+            <small>{{ unit }}</small>
+          {% else %}
+            --
+          {% endif %}
+        </div>
+
+
+        <div class="trend-ab trend-b">
+          <span>B</span>
+          {% if blatest is not none %}
+            {{ blatest | round(decimals) }}
+            <small>{{ unit }}</small>
+          {% else %}
+            --
+          {% endif %}
+        </div>
+
+
+        <div class="trend-graph">
+
+          <svg
+            viewBox="0 0 300 70"
+            preserveAspectRatio="none"
+          >
+
+            <line
+              x1="5"
+              y1="60"
+              x2="295"
+              y2="60"
+              stroke="#222"
+              stroke-width="1"
+            />
+
+            {% if acount == 1 %}
+              {% set p = ga.points[0] %}
+              <line
+                x1="15" y1="{{ p.y }}"
+                x2="140" y2="{{ p.y }}"
+                stroke="#8296ff"
+                stroke-width="3"
+                stroke-linecap="round"
+                vector-effect="non-scaling-stroke"
+              />
+              <circle
+                cx="78" cy="{{ p.y }}" r="4"
+                fill="#8296ff"
+              />
+            {% elif acount > 1 %}
+              <polyline
+                points="{{ ga.coords | join(' ') }}"
+                fill="none"
+                stroke="#8296ff"
+                stroke-width="3"
+                vector-effect="non-scaling-stroke"
+              />
+              {% for p in ga.points %}
+                <circle cx="{{ p.x }}" cy="{{ p.y }}" r="4" fill="#8296ff" />
+              {% endfor %}
+            {% endif %}
+
+
+            {% if bcount == 1 %}
+              {% set p = gb.points[0] %}
+              <line
+                x1="160" y1="{{ p.y }}"
+                x2="285" y2="{{ p.y }}"
+                stroke="#f59e0b"
+                stroke-width="3"
+                stroke-linecap="round"
+                vector-effect="non-scaling-stroke"
+              />
+              <circle
+                cx="222" cy="{{ p.y }}" r="4"
+                fill="#f59e0b"
+              />
+            {% elif bcount > 1 %}
+              <polyline
+                points="{{ gb.coords | join(' ') }}"
+                fill="none"
+                stroke="#f59e0b"
+                stroke-width="3"
+                vector-effect="non-scaling-stroke"
+              />
+              {% for p in gb.points %}
+                <circle cx="{{ p.x }}" cy="{{ p.y }}" r="4" fill="#f59e0b" />
+              {% endfor %}
+            {% endif %}
+
+          </svg>
+
+        </div>
+
+      </div>
+
+    {% endif %}
+
+  {% endmacro %}
+
+  <style>
+
+    .analysis-card {
+      background:#000;
+      border-radius:38px;
+      padding:10px 18px;
+      overflow:hidden;
+      box-sizing:border-box;
+      font-family:"Antonio","Arial Narrow",sans-serif;
+    }
+
+    .topline {
+      height:7px;
+      background:#f59e0b;
+      margin:-5px -18px 9px -18px;
+    }
+
+    .bottomline {
+      height:7px;
+      background:#8296ff;
+      margin:10px -18px -5px -18px;
+    }
+
+    .title {
+      color:#fff;
+      text-align:center;
+      font-size:18px;
+      font-weight:800;
+      letter-spacing:1.2px;
+      margin-bottom:3px;
+    }
+
+    .mission {
+      color:#8296ff;
+      text-align:center;
+      font-size:10px;
+      font-weight:800;
+      letter-spacing:.8px;
+      margin-bottom:9px;
+    }
+
+    .section {
+      color:#888;
+      font-size:9px;
+      font-weight:800;
+      letter-spacing:1.1px;
+      margin:9px 0 4px 1px;
+    }
+
+    .trend-row {
+      height:50px;
+      display:grid;
+      grid-template-columns:105px 72px 72px 1fr;
+      margin:5px 0;
+      border-radius:18px;
+      overflow:hidden;
+      background:#0b0b0b;
+      cursor:pointer;
+    }
+
+    .trend-label {
+      color:#000;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      text-align:center;
+      font-size:9px;
+      font-weight:900;
+      padding:0 6px;
+    }
+
+    .trend-ab {
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:3px;
+      background:#000;
+      color:#fff;
+      font-size:13px;
+      font-weight:900;
+      white-space:nowrap;
+    }
+
+    .trend-ab span {
+      font-size:8px;
+      font-weight:900;
+    }
+
+    .trend-a span {
+      color:#8296ff;
+    }
+
+    .trend-b span {
+      color:#f59e0b;
+    }
+
+    .trend-ab small {
+      color:#777;
+      font-size:7px;
+      font-weight:700;
+    }
+
+    .trend-graph {
+      padding:3px 8px 3px 2px;
+      background:#070707;
+    }
+
+    .trend-graph svg {
+      display:block;
+      width:100%;
+      height:44px;
+    }
+
+    .empty {
+      color:#777;
+      text-align:center;
+      padding:16px 4px;
+      font-size:11px;
+    }
+
+  </style>
+
+  <div class="analysis-card">
+
+    <div class="topline"></div>
+
+    <div class="title">
+      MISSION ANALYSIS
+    </div>
+
+    <div class="mission">
+      <span style="color:#8296ff;">
+        A · {{ ma.code }}
+        {% if ma.time %} · {{ ma.time[5:10] | replace('-','/') }} {{ ma.time[11:16] }}{% endif %}
+      </span>
+
+      &nbsp;&nbsp;VS&nbsp;&nbsp;
+
+      <span style="color:#f59e0b;">
+        B · {{ mb.code }}
+        {% if mb.time %} · {{ mb.time[5:10] | replace('-','/') }} {{ mb.time[11:16] }}{% endif %}
+      </span>
+    </div>
+
+
+    {% if aseries %}
+
+      <div class="section">
+        ATMOSPHERIC ANALYSIS
+      </div>
+
+      {{ trend(
+        'tricorder_atmosphere',
+        'temperature_f',
+        'TEMPERATURE',
+        '°F',
+        '#f59e0b',
+        1
+      ) }}
+
+      {{ trend(
+        'tricorder_atmosphere',
+        'humidity_percent',
+        'HUMIDITY',
+        '%',
+        '#8296ff',
+        1
+      ) }}
+
+      {{ trend(
+        'tricorder_atmosphere',
+        'pressure_hpa',
+        'PRESSURE',
+        'hPa',
+        '#22c55e',
+        1
+      ) }}
+
+      {{ trend(
+        'tricorder_atmosphere',
+        'eco2_ppm',
+        'eCO₂',
+        'ppm',
+        '#22d3ee',
+        0
+      ) }}
+
+      {{ trend(
+        'tricorder_atmosphere',
+        'tvoc_ppb',
+        'TVOC',
+        'ppb',
+        '#a78bfa',
+        0
+      ) }}
+
+
+      <div class="section">
+        RADIATION ANALYSIS
+      </div>
+
+      {{ trend(
+        'tricorder_radiation',
+        'cpm',
+        'CPM',
+        'CPM',
+        '#ef4444',
+        1
+      ) }}
+
+      {{ trend(
+        'tricorder_radiation',
+        'dose_usvh',
+        'DOSE',
+        'µSv/h',
+        '#ff8c42',
+        3
+      ) }}
+
+
+      <div class="section">
+        AUDIO ANALYSIS
+      </div>
+
+      {{ trend(
+        'tricorder_audio',
+        'relative_db',
+        'RELATIVE',
+        'dB',
+        '#a78bfa',
+        1
+      ) }}
+
+      {{ trend(
+        'tricorder_audio',
+        'peak_db',
+        'PEAK',
+        'dB',
+        '#22d3ee',
+        1
+      ) }}
+
+
+      {{ trend(
+        'tricorder_magnetic',
+        'magnetic_field_ut',
+        'MAGNETIC FIELD',
+        'µT',
+        '#facc15',
+        2
+      ) }}
+
+
+      <div class="section">
+        THERMAL ANALYSIS
+      </div>
+
+      {{ trend(
+        'tricorder_thermal',
+        'center_f',
+        'THERMAL CENTER',
+        '°F',
+        '#f59e0b',
+        1
+      ) }}
+
+      {{ trend(
+        'tricorder_thermal',
+        'min_f',
+        'THERMAL MIN',
+        '°F',
+        '#3b82f6',
+        1
+      ) }}
+
+      {{ trend(
+        'tricorder_thermal',
+        'max_f',
+        'THERMAL MAX',
+        '°F',
+        '#ef4444',
+        1
+      ) }}
+
+
+      <div class="section">
+        DISTANCE ANALYSIS
+      </div>
+
+      {{ trend(
+        'tricorder_distance',
+        'distance_m',
+        'LIDAR DISTANCE',
+        'm',
+        '#22c55e',
+        2
+      ) }}
+
+
+      <div class="section">
+        ULTRAVIOLET ANALYSIS
+      </div>
+
+      {{ trend(
+        'tricorder_uv',
+        'uv_index',
+        'UV INDEX',
+        '',
+        '#a78bfa',
+        2
+      ) }}
+
+      {{ trend(
+        'tricorder_uv',
+        'uv_raw',
+        'UV RAW',
+        '',
+        '#22d3ee',
+        0
+      ) }}
+
+    {% else %}
+
+      <div class="empty">
+        SELECT AN ARCHIVED MISSION
+      </div>
+
+    {% endif %}
+
+
+    <div class="bottomline"></div>
+
+  </div>
+card_mod:
+  style: |
+    ha-card {
+      background: #29364c !important;
+      padding: 2px !important;
+      border: none !important;
+      border-radius: 40px !important;
+      box-shadow: none !important;
+      overflow: hidden !important;
+    }

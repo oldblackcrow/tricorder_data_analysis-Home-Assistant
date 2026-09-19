@@ -1,0 +1,133 @@
+# ============================================================
+# TRICORDER MISSION ARCHIVE
+# File-backed replacement for retired InfluxDB archive
+# Reads /config/tricorder/tricorder_uploads.jsonl
+# ============================================================
+
+input_text:
+  tric_archive_mission_id:
+    name: Tricorder Archive Mission ID
+    max: 255
+
+  tric_archive_compare_mission_id:
+    name: Tricorder Archive Compare Mission ID
+    max: 255
+
+
+# ============================================================
+# FILE-BACKED ARCHIVE SENSORS
+# Output intentionally mimics the old InfluxDB "results" shape
+# so the existing Mission Archive / Analysis / Comparison cards
+# can continue using the same entities and templates.
+# ============================================================
+command_line:
+
+  - sensor:
+      name: Tricorder Mission Catalog
+      unique_id: tricorder_mission_catalog
+      command: >-
+        python3 /config/tricorder/tricorder_archive_reader.py catalog
+      command_timeout: 10
+      scan_interval: 30
+      value_template: >-
+        {{ value_json.get('count', 0) | int(0) }}
+      json_attributes:
+        - results
+
+  - sensor:
+      name: Tricorder Mission Events
+      unique_id: tricorder_mission_events
+      command: >-
+        python3 /config/tricorder/tricorder_archive_reader.py events
+        "{{ states('input_text.tric_archive_mission_id') }}"
+      command_timeout: 10
+      scan_interval: 86400
+      value_template: >-
+        {{ value_json.get('count', 0) | int(0) }}
+      json_attributes:
+        - results
+
+  - sensor:
+      name: Tricorder Mission Scans
+      unique_id: tricorder_mission_scans
+      command: >-
+        python3 /config/tricorder/tricorder_archive_reader.py scans
+        "{{ states('input_text.tric_archive_mission_id') }}"
+      command_timeout: 10
+      scan_interval: 86400
+      value_template: >-
+        {{ value_json.get('count', 0) | int(0) }}
+      json_attributes:
+        - results
+
+  - sensor:
+      name: Tricorder Comparison Mission Scans
+      unique_id: tricorder_comparison_mission_scans
+      command: >-
+        python3 /config/tricorder/tricorder_archive_reader.py comparison
+        "{{ states('input_text.tric_archive_compare_mission_id') }}"
+      command_timeout: 10
+      scan_interval: 86400
+      value_template: >-
+        {{ value_json.get('count', 0) | int(0) }}
+      json_attributes:
+        - results
+
+
+# ============================================================
+# REFRESH MISSION A
+# ============================================================
+automation:
+
+  - id: tricorder_archive_refresh_selected_mission
+    alias: Tricorder Archive - Refresh Selected Mission
+    description: >
+      Refreshes Mission A timeline and scan data from the JSONL archive.
+
+    triggers:
+      - trigger: state
+        entity_id: input_text.tric_archive_mission_id
+
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ trigger.to_state is not none
+             and trigger.to_state.state
+                 not in ['', 'unknown', 'unavailable'] }}
+
+    actions:
+      - action: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.tricorder_mission_events
+            - sensor.tricorder_mission_scans
+
+    mode: restart
+
+
+  # ==========================================================
+  # REFRESH MISSION B
+  # ==========================================================
+  - id: tricorder_archive_refresh_comparison_mission
+    alias: Tricorder Archive - Refresh Comparison Mission
+    description: >
+      Refreshes Mission B comparison data from the JSONL archive.
+
+    triggers:
+      - trigger: state
+        entity_id: input_text.tric_archive_compare_mission_id
+
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ trigger.to_state is not none
+             and trigger.to_state.state
+                 not in ['', 'unknown', 'unavailable'] }}
+
+    actions:
+      - action: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.tricorder_comparison_mission_scans
+
+    mode: restart
