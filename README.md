@@ -1,19 +1,68 @@
 # Tricorder Data Analysis — Home Assistant
 
-A Home Assistant companion platform for custom-built science tricorders and other tricorder variants. Whether you're building a MyCorder, Next Gen, TR-460, or your own custom tricorder, if it can send sensor data over a network, you can bring it into Home Assistant for mission tracking, visualization, and analysis.
+**Inspired by science fiction. Built for scientific discovery.**
 
-Features an LCARS-inspired interface for displaying scientific sensor telemetry, managing missions, analyzing recorded scans, and maintaining mission archives.
+An open-source Home Assistant companion for collecting, visualizing, and exploring sensor data from network-connected instruments. It began with the TR-460 science tricorder, but you **don't need a tricorder or even to know what one is to use the ideas and tools here.**
 
-Designed as an adaptable platform for tricorder builders, allowing different hardware implementations to share a common Home Assistant analysis environment.
+The project is intended for tricorder builders, DIY instrument makers, STEM educators and students, makerspaces, and curious people experimenting with environmental or other scientific sensors. The LCARS-inspired interface gives it a science-fiction flavor; the sensor data is real data from the instruments you connect.
 
-**Supported capabilities include:**
+> If your device can send its measurements over a network, it may be able to use this platform. The current receiver expects a particular JSON telemetry format; other instruments may need a small adapter or field mapping. Compatibility with MyCorder, Next Gen, and other designs still needs testing.
 
-* Mission creation, selection, and archiving
-* Scientific sensor telemetry and recorded scan analysis
-* Interactive graphs and measurement history
-* Radiation, atmospheric, magnetic, orientation, color, ultraviolet, acoustic, thermal, and distance measurements
-* Customizable LCARS-inspired dashboards
+## What it does
 
-Originally developed for the TR-460 Science Tricorder, the project is intended to support additional tricorder designs through compatible telemetry formats and integration configurations.
+- Receives compatible sensor readings through a Home Assistant webhook and records them in local JSONL files.
+- Organizes observations into selectable missions and archives.
+- Shows interactive sensor cards, time-series graphs, and mission analysis.
+- Includes example handling for radiation, atmospheric measurements, magnetic fields, orientation, color, UV, acoustic level, thermal readings, distance, and location when supplied.
+- Keeps the Home Assistant integration separate from the instrument's hardware and firmware.
+
+You can adapt the existing dashboard and data mappings for a tricorder, classroom experiment, environmental sensor package, or another custom instrument. **The current package is a starting point, not a universal plug-and-play driver for every networked sensor.**
+
+## Who it's for
+- **Astronomy & Astrophysics**
+    The platform can also support astronomy and astrophysics projects, particularly experimental instrumentation and STEM education. Potential   applications include observatory environmental monitoring, telescope and instrument diagnostics, radio astronomy telemetry, and observation    archiving.
+    With suitable sensors and adaptations, it could also support sky brightness measurements and astronomical spectroscopy.
+    While not intended to replace specialized astronomical analysis software, it provides an accessible foundation for collecting, organizing,   and exploring data from custom-built astronomical instrumen
+- **Tricorder builders:** Connect TR-460, MyCorder, Next Gen, or another design by matching the supported telemetry format.
+- **STEM classrooms and science clubs:** Build instruments, collect measurements, and compare experimental runs.
+- **Makers and open-source hardware developers:** Give homemade sensor packages a Home Assistant interface and mission archive.
+- **Citizen-science and environmental projects:** Organize readings from compatible field or stationary sensors.
+
+## What's in this repository
+
+```text
+packages/       Home Assistant packages and sensor definitions
+tricorder/      Python archive and analysis utilities
+setup/          Configuration snippets, scripts, example upload receiver
+dashboard/      Tricorder and analysis views plus individual card YAML
+examples/       Fictional sample data for testing
+docs/           Installation, security, and source-inventory notes
+```
+
+This is the **Home Assistant side only**. Instrument firmware, OTA images, private mission archives, secrets, and unrelated household configuration are not included. Third-party themes, custom cards, fonts, artwork, and franchise media are not bundled.
+
+## Getting started
+1. Read [Installation](docs/INSTALLATION.md) and [Security](docs/SECURITY.md) **before** copying anything into Home Assistant.
+2. Back up your existing Home Assistant installation. The source setup used **Home Assistant 2026.9.3**; other versions have not been verified.
+3. Install the separately distributed `custom:html-template-card`, `card-mod`, and `browser_mod` dependencies described in the installation guide.
+4. Merge the packages, Python files, scripts, and receiver configuration according to the guide. **Do not replace your whole `configuration.yaml`, `automations.yaml`, or `scripts.yaml`.**
+5. Set up a private webhook and a local file notifier. Configure your instrument—or an adapter—to send the expected JSON records.
+6. Import the included dashboard views, then confirm that mission selection changes the corresponding sensor cards.
+
+You can explore the expected record structure in [`examples/`](examples/). The physical tricorder sender is **not** part of this repository.
+
+## Project status and scientific use
+This repository was extracted from a working TR-460 Home Assistant installation and checked offline. **It has not yet been installed and verified from scratch on a clean Home Assistant system or tested with every proposed instrument.** Additional sensor types, hardware adapters, and installation feedback are welcome.
+
+It may be useful for education, exploratory measurement, prototyping, and community-science projects. It is **not presented as a calibrated, validated, or safety-certified scientific measurement system**. The suitability of any result depends on the connected instrument, its calibration, the measurement method, and the needs of your project.
+
+## Privacy and security
+Never commit live webhook IDs or URLs, tokens, `secrets.yaml`, Home Assistant `.storage` files, full backups, personal mission archives, or records containing private locations. Use a fresh webhook ID in your own installation and keep the receiver on trusted network paths; see [Security](docs/SECURITY.md).
+
+## License and attribution
+Original project code is intended for release under the **GNU General Public License v3.0**. See the repository's `LICENSE` file for the exact terms. Only material the contributors have rights to license is covered; third-party Home Assistant components and Star Trek-related material retain their respective owners' terms and rights. This is an independent fan-inspired project, not affiliated with or endorsed by the Star Trek rights holders.
+
+## Help shape it
+If you're using a different tricorder, a student-built sensor package, or an experimental instrument, testing and issue reports are welcome. Share the sensor types and data fields you needed to adapt, **not** private webhook links or real personal location data.
 
 *Because “I wonder what that is?” should have a button.*
