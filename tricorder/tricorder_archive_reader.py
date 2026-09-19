@@ -465,6 +465,10 @@ def normalize_scan(r, mission_id):
                 r.get("latitude"),
             "longitude":
                 r.get("longitude"),
+            "location_source": r.get(
+                "_location_source",
+                "location_update",
+            ),
         })
 
     elif measurement == "tricorder_thermal":
@@ -661,6 +665,78 @@ def _radiation_series_rows(r, mission_id):
     return rows
 
 
+
+def _record_timestamp(value):
+    """Return a comparable timestamp, or None for an unavailable RTC."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        value = value.strip().replace("Z", "+00:00")
+        return datetime.fromisoformat(value).timestamp()
+    except (ValueError, OverflowError, OSError):
+        return None
+
+
+def _mission_location_row(record, mission_id, source):
+    """Build a location row from mission metadata or a GPS update.
+
+    Do not manufacture a position when latitude or longitude is absent.
+    """
+    try:
+        lat = float(record["latitude"])
+        lon = float(record["longitude"])
+    except (KeyError, ValueError, TypeError):
+        return None
+
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+
+    if _record_timestamp(record.get("time")) is None:
+        return None
+
+    item = dict(record)
+    item["record_type"] = "location_update"
+    item["_location_source"] = source
+    item["latitude"] = lat
+    item["longitude"] = lon
+    _, row = normalize_scan(item, mission_id)
+    return row
+
+
+def _selected_mission_window(records, mission_id):
+    """Return a bounded start/end interval for untagged GPS updates.
+
+    A nearby fix *after* mission_end is not known to belong to that
+    mission. An open-ended mission is not used for time inference.
+    """
+    starts = []
+    ends = []
+    all_starts = []
+    for record in records:
+        kind = record.get("record_type")
+        when = _record_timestamp(record.get("time"))
+        if when is None:
+            continue
+        if kind == "mission_start":
+            all_starts.append(when)
+            if record.get("mission_file") == mission_id:
+                starts.append(when)
+        elif kind == "mission_end" and record.get("mission_file") == mission_id:
+            ends.append(when)
+
+    if not starts:
+        return None
+    start = min(starts)
+    later_ends = [t for t in ends if t >= start]
+    if not later_ends:
+        return None
+    end = min(later_ends)
+    next_starts = [t for t in all_starts if t > start]
+    if next_starts:
+        end = min(end, min(next_starts))
+    return (start, end)
+
+
 def mission_scans(records, mission_id):
 
     if not mission_id or mission_id in (
@@ -677,6 +753,16 @@ def mission_scans(records, mission_id):
         if str(
             r.get("mission_file", "") or ""
         ) != mission_id:
+            continue
+
+        # Mission start/end records contain coordinates even when no
+        # location_update carries a mission_file identifier.
+        if r.get("record_type") in ("mission_start", "mission_end"):
+            location = _mission_location_row(
+                r, mission_id, r["record_type"],
+            )
+            if location is not None:
+                grouped.setdefault("tricorder_location", []).append(location)
             continue
 
         measurement, row = normalize_scan(
@@ -715,6 +801,25 @@ def mission_scans(records, mission_id):
                     radiation_series_seen.add(
                         series_key
                     )
+
+    # Older GPS updates may have no mission_file. Associate only those
+    # timestamped *inside* a completed mission, not nearby orphaned fixes.
+    window = _selected_mission_window(records, mission_id)
+    if window is not None:
+        start, end = window
+        for r in records:
+            if r.get("record_type") != "location_update":
+                continue
+            if r.get("mission_file"):
+                continue
+            when = _record_timestamp(r.get("time"))
+            if when is None or not (start <= when <= end):
+                continue
+            location = _mission_location_row(
+                r, mission_id, "time_window",
+            )
+            if location is not None:
+                grouped.setdefault("tricorder_location", []).append(location)
 
     series = []
     total = 0
