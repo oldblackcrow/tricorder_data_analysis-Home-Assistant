@@ -163,18 +163,7 @@ content: |
                 entity_id:"input_text.tric_archive_mission_id",
                 value:{{ mid | to_json }}
               }
-            ).then(() => {
-              hass.callService(
-                "homeassistant",
-                "update_entity",
-                {
-                  entity_id:[
-                    "sensor.tricorder_mission_events",
-                    "sensor.tricorder_mission_scans"
-                  ]
-                }
-              );
-            });
+            );
           '
         >
           <div class="mission-code">
