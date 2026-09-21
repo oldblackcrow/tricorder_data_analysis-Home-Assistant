@@ -6,7 +6,7 @@ An open-source Home Assistant companion for collecting, visualizing, and explori
 
 The project is intended for tricorder builders, DIY instrument makers, STEM educators and students, makerspaces, and curious people experimenting with environmental or other scientific sensors. The LCARS-inspired interface gives it a science-fiction flavor; the sensor data is real data from the instruments you connect.
 
-> If your device can send its measurements over a network, it may be able to use this platform. The current receiver expects a particular JSON telemetry format; other instruments may need a small adapter or field mapping. Compatibility with MyCorder, Next Gen, and other designs still needs testing.
+> If your device can send its measurements over a network, it may be able to use this platform. The current receiver expects a particular JSON telemetry format; other instruments may need a small adapter or field mapping. Compatibility with PiCorder, Next Gen, and other designs still needs testing.
 
 ## What it does
 
