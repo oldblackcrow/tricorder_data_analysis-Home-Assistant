@@ -57,6 +57,11 @@ def load_records(mode=None, mission_id=""):
     mission starts and untagged GPS fixes are retained to support the
     existing, bounded location time-window inference.
     """
+    if mode in ("events", "scans", "comparison") and mission_id in (
+        "", "unknown", "unavailable",
+    ):
+        return [], None
+
     records = []
 
     try:
