@@ -15,6 +15,6 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install test runner
-        run: python -m pip install pytest
+        run: python -m pip install pytest PyYAML
       - name: Run offline archive regressions
         run: python -m pytest -q tests
