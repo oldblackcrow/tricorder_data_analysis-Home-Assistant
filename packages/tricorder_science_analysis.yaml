@@ -1,0 +1,46 @@
+# TR-460 Science Analysis — optional add-on. Does not modify the upload receiver
+# or the existing eight scan cards. Requires tricorder_science_analysis.py.
+#
+# Copy to /config/packages/tricorder_science_analysis.yaml and restart HA.
+
+input_text:
+  tric_science_baseline_mission_id:
+    name: Tricorder Science Baseline Mission ID
+    max: 255
+
+command_line:
+  - sensor:
+      name: Tricorder Science Analysis
+      unique_id: tricorder_science_analysis
+      command: >-
+        python3 /config/tricorder/tricorder_science_analysis.py
+        "{{ states('input_text.tric_archive_mission_id') }}"
+        "{{ states('input_text.tric_science_baseline_mission_id') }}"
+      command_timeout: 10
+      scan_interval: 86400
+      value_template: >-
+        {{ value_json.get('state', 0) | int(0) }}
+      json_attributes:
+        - status
+        - current_mission
+        - baseline_mission
+        - rows
+        - note
+        - error
+
+automation:
+  - id: tricorder_refresh_science_analysis
+    alias: Tricorder Science - Refresh Baseline Analysis
+    description: >-
+      Recompute comparisons when Mission A or the reference mission changes.
+      Reads saved JSONL records; does not affect the Tricorder hardware.
+    triggers:
+      - trigger: state
+        entity_id:
+          - input_text.tric_archive_mission_id
+          - input_text.tric_science_baseline_mission_id
+    actions:
+      - action: homeassistant.update_entity
+        target:
+          entity_id: sensor.tricorder_science_analysis
+    mode: restart
