@@ -23,7 +23,13 @@ def load_records():
                     record = json.loads(line)
                 except Exception:
                     continue
-                if isinstance(record, dict):
+                # Analysis only consumes radiation_scan/scan_summary;
+                # don't retain unrelated telemetry for every poll.
+                if (
+                    isinstance(record, dict)
+                    and record.get("record_type")
+                    in ("radiation_scan", "scan_summary")
+                ):
                     records.append(record)
     except Exception as error:
         return [], str(error)

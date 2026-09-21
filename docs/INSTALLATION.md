@@ -18,7 +18,7 @@
 6. Check configuration and restart/reload the applicable Home Assistant components. Confirm `sensor.tricorder_mission_catalog`, `sensor.tricorder_mission_scans`, `sensor.tricorder_mission_events`, `sensor.tricorder_comparison_mission_scans`, and `sensor.tricorder_radiation_analysis` exist. The archived missions sensor is defined by the `command_line` snippet, not the seven packages.
 7. Create a **new dashboard** and paste the contents of `dashboard/tricorder-dashboard.yaml` into its Raw Configuration Editor. The `dashboard/cards/` directory has individual cards if you'd rather merge these views into your existing dashboard. Avoid overwriting your other LCARS views.
 8. Ensure the sender posts JSON records matching the existing TR-460 payload format to your new private local webhook. The physical sender/firmware is **not included**. Use `examples/tricorder_uploads.example.jsonl` as fictional test records: copy the *lines*, not the example file itself, into a **test** archive if desired.
-9. Verify selecting a mission refreshes all the relevant dashboard cards. In particular, the Radiation, Color, Orientation and Magnetic cards are the revised mission-aware versions from the backed-up HA dashboard.
+9. Verify selecting a mission refreshes all the relevant dashboard cards. The mission selector changes `input_text.tric_archive_mission_id`; the automation in `packages/tricorder_archive.yaml` refreshes the events and scans sensors. Avoid adding a second refresh in dashboard JavaScript, which rereads the archive unnecessarily. In particular, the Radiation, Color, Orientation and Magnetic cards are the revised mission-aware versions from the backed-up HA dashboard.
 
 ## Scope caveats
 

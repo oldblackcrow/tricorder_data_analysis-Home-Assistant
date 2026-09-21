@@ -49,7 +49,19 @@ def load_archived_missions():
     return {}
 
 
-def load_records():
+def load_records(mode=None, mission_id=""):
+    """Keep only records needed by this command.
+
+    The JSONL file must still be read, but selected-mission requests
+    should not hold every unrelated scan in memory. For scans, all
+    mission starts and untagged GPS fixes are retained to support the
+    existing, bounded location time-window inference.
+    """
+    if mode in ("events", "scans", "comparison") and mission_id in (
+        "", "unknown", "unavailable",
+    ):
+        return [], None
+
     records = []
 
     try:
@@ -70,8 +82,27 @@ def load_records():
                 except Exception:
                     continue
 
-                if isinstance(record, dict):
-                    records.append(record)
+                if not isinstance(record, dict):
+                    continue
+
+                kind = record.get("record_type")
+                record_mission = str(record.get("mission_file", "") or "")
+
+                if mode in ("catalog", "archived"):
+                    if kind != "mission_start":
+                        continue
+                elif mode == "events":
+                    if record_mission != mission_id:
+                        continue
+                elif mode in ("scans", "comparison"):
+                    if not (
+                        record_mission == mission_id
+                        or kind == "mission_start"
+                        or (kind == "location_update" and not record_mission)
+                    ):
+                        continue
+
+                records.append(record)
 
     except Exception as error:
         return [], str(error)
@@ -714,6 +745,8 @@ def _selected_mission_window(records, mission_id):
     all_starts = []
     for record in records:
         kind = record.get("record_type")
+        if kind not in ("mission_start", "mission_end"):
+            continue
         when = _record_timestamp(record.get("time"))
         if when is None:
             continue
@@ -784,7 +817,13 @@ def mission_scans(records, mission_id):
                 r.get("id", 0),
             )
 
-            series_key = str(record_id)
+            # Older scans may omit an ID. Don't collapse every
+            # no-ID scan onto the same default record_id=0.
+            series_key = (
+                ("record", str(record_id))
+                if record_id not in (None, "", 0, "0")
+                else ("time", str(r.get("time", "")))
+            )
 
             if series_key not in radiation_series_seen:
                 radiation_rows = _radiation_series_rows(
@@ -881,7 +920,7 @@ def main():
         else ""
     )
 
-    records, error = load_records()
+    records, error = load_records(mode, mission_id)
 
     if error:
 
