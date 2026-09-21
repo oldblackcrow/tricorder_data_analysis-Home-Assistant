@@ -41,6 +41,10 @@ docs/           Installation, security, and source-inventory notes
 
 This is the **Home Assistant side only**. Instrument firmware, OTA images, private mission archives, secrets, and unrelated household configuration are not included. Third-party themes, custom cards, fonts, artwork, and franchise media are not bundled.
 
+## Optional Science Analysis
+
+An optional [saved-mission baseline and exploratory deviation view](docs/SCIENCE-ANALYSIS.md) compares Mission A against a selected reference mission without adding any instrument firmware requirements. This feature is not a calibrated alarm or safety monitor.
+
 ## Getting started
 1. Read [Installation](docs/INSTALLATION.md) and [Security](docs/SECURITY.md) **before** copying anything into Home Assistant.
 2. Back up your existing Home Assistant installation. The source setup used **Home Assistant 2026.9.3**; other versions have not been verified.
