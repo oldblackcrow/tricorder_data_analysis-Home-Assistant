@@ -135,3 +135,40 @@ def test_science_yaml_package_card_view_are_structurally_valid():
     assert "sensor.tricorder_science_analysis" in card["entities"]
     assert len(view["views"][0]["sections"][0]["cards"]) == 2
     assert "input_text.tric_archive_mission_id" in view["views"][0]["sections"][0]["cards"][0]["entities"]
+
+
+def test_unmeasured_gases_do_not_create_false_eco2_anomaly(tmp_path):
+    baseline = [scan(BASE, "atmosphere_scan",
+                     eco2_ppm=0, tvoc_ppb=0, temperature_c=22)
+                for _ in range(3)]
+    current = [scan(CURRENT, "atmosphere_scan",
+                    eco2_ppm=400, tvoc_ppb=0, temperature_c=23)
+               for _ in range(3)]
+    result = science.analyze(CURRENT, BASE, archive(tmp_path, *(baseline + current)))
+    assert find(result, "Temperature")["baseline_n"] == 3
+    assert all(r["measurement"] not in ("eCO₂ estimate", "TVOC estimate")
+               for r in result["rows"])
+
+
+def test_measured_zero_tvoc_is_valid_but_zero_eco2_is_not(tmp_path):
+    baseline = [scan(BASE, "atmosphere_scan",
+                     eco2_ppm=400, tvoc_ppb=0, handheld_linked=True)
+                for _ in range(3)]
+    current = [scan(CURRENT, "atmosphere_scan",
+                    eco2_ppm=550, tvoc_ppb=0, handheld_linked=True)
+               for _ in range(3)]
+    result = science.analyze(CURRENT, BASE, archive(tmp_path, *(baseline + current)))
+    assert find(result, "eCO₂ estimate")["baseline"] == 400
+    assert find(result, "TVOC estimate")["baseline"] == 0
+    assert find(result, "TVOC estimate")["current"] == 0
+
+
+def test_unlinked_gases_are_ignored_even_if_nonzero(tmp_path):
+    baseline = [scan(BASE, "atmosphere_scan",
+                     eco2_ppm=400, tvoc_ppb=0, handheld_linked=False)
+                for _ in range(3)]
+    current = [scan(CURRENT, "atmosphere_scan",
+                    eco2_ppm=650, tvoc_ppb=10, handheld_linked=True)
+               for _ in range(3)]
+    result = science.analyze(CURRENT, BASE, archive(tmp_path, *(baseline + current)))
+    assert result["status"] == "no_shared_scans"
