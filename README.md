@@ -69,17 +69,16 @@ Original project code is intended for release under the **GNU General Public Lic
 ## Help shape it
 If you're using a different tricorder, a student-built sensor package, or an experimental instrument, testing and issue reports are welcome. Share the sensor types and data fields you needed to adapt, **not** private webhook links or real personal location data.
 
-Mission Data Page
+### Mission Data Page
 <img width="1902" height="1076" alt="image" src="https://github.com/user-attachments/assets/c4ae2d9b-9006-4ae8-9795-8406c501189b" />
 <img width="725" height="872" alt="image" src="https://github.com/user-attachments/assets/77bfcb89-743f-494d-8082-7a6ab8e54082" />
 <img width="697" height="847" alt="image" src="https://github.com/user-attachments/assets/a329ac40-a76b-41ef-954c-2d47cab00631" />
 
-Mission Analysis Page
+### Mission Analysis Page
 <img width="1916" height="1078" alt="image" src="https://github.com/user-attachments/assets/781d2d8e-f9a9-424c-9207-04b45c2f73c3" />
 <img width="710" height="597" alt="image" src="https://github.com/user-attachments/assets/fa46cb4a-e43a-428c-9a77-ff39b354ae59" />
 <img width="720" height="597" alt="image" src="https://github.com/user-attachments/assets/25637518-e921-4889-abfd-e0eeaeabf23f" />
 
-
-Science Page
+### Science Page
 <img width="562" height="1021" alt="image" src="https://github.com/user-attachments/assets/bb052c8c-e7a0-4760-ba36-3cc8aab7e17f" />
 
