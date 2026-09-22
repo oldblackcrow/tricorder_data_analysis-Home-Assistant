@@ -102,8 +102,26 @@ def _read_selected(path, selected, baseline):
                     # The older thermal payload can use thermal_center_c.
                     if kind == "thermal_scan" and field == "center_c":
                         value = number(record.get("thermal_center_c"))
-                if value is not None:
-                    samples[mission].setdefault(name, []).append(value * scale)
+                if value is None:
+                    continue
+
+                # The Tricorder's unmeasured gas channels are reported as
+                # zeros in otherwise valid atmosphere scans. A real eCO2
+                # estimate begins above zero; a measured TVOC can be zero.
+                # If gas measurement was not taken, neither zero is evidence.
+                if kind == "atmosphere_scan" and field in (
+                    "eco2_ppm", "tvoc_ppb"
+                ):
+                    if record.get("handheld_linked") is False:
+                        continue
+                    eco2 = number(record.get("eco2_ppm"))
+                    if field == "eco2_ppm" and value <= 0:
+                        continue
+                    if field == "tvoc_ppb":
+                        if eco2 == 0 or (value == 0 and eco2 is None):
+                            continue
+
+                samples[mission].setdefault(name, []).append(value * scale)
 
             if kind in RAD_TYPES:
                 pulses = number(record.get("pulses"))
