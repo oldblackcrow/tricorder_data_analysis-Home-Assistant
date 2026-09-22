@@ -52,6 +52,7 @@ mission. It is not continuous recording or automated hazard monitoring.
 - eCO₂ and TVOC are sensor estimates, relative dB is not a calibrated sound
   level, and magnetic results depend on location/orientation. No claim is made
   that an anomalous reading identifies a material or hazardous condition.
+- Gas-channel handling: the handheld may output eCO₂=0 and TVOC=0 when no gas measurement was taken. These zero eCO₂ values are not used as a reference, and accompanying zero TVOC is also omitted. If the saved scan explicitly says `handheld_linked: false`, both gas channels are omitted. A measured TVOC of 0 is retained when the companion eCO₂ reading is positive. Older records with missing gas metadata cannot always distinguish zero from 'not sampled'.
 - Missing/nonfinite channels are omitted rather than shown as measured zero.
   Missions with no shared scan types show a no-data message. The optional
   sensor reads the archive on mission/reference selection, not every 30 seconds.
