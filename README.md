@@ -20,13 +20,13 @@ You can adapt the existing dashboard and data mappings for a tricorder, classroo
 
 ## Who it's for
 - **Tricorder builders:** Connect TR-460, PiCorder, Next Gen, or another designs by matching the supported telemetry format.
-- **Astronomy & Astrophysics**
+- **Astronomy & Astrophysics:**
     The platform can also support astronomy and astrophysics projects, particularly experimental instrumentation and STEM education. Potential   applications include observatory environmental monitoring, telescope and instrument diagnostics, radio astronomy telemetry, and observation    archiving. With suitable sensors and adaptations, it could also support sky brightness measurements and astronomical spectroscopy. While not intended to replace specialized astronomical analysis software, it provides an accessible foundation for collecting, organizing, and exploring data from custom-built astronomical instruments.
- - **General & Experimental Physics**
+ - **General & Experimental Physics:**
     Record and analyze measurements from custom-built instruments, including temperature, radiation, magnetic fields, motion, light, and acoustic phenomena. Compare experimental runs, investigate relationships between variables, and archive observations for later analysis.
-- **Quantum Physics & Radiation Studies**
+- **Quantum Physics & Radiation Studies:**
     Support educational experiments involving radioactive decay, counting statistics, and other measurable phenomena associated with quantum physics. With appropriate external instrumentation, the platform could also accommodate photon-counting experiments and other specialized measurements.
-- **Archaeology & Field Research**
+- **Archaeology & Field Research:**
      Document environmental conditions, magnetic anomalies, material characteristics, and other observations during field investigations. Organize measurements by location, mission, or sample to support comparative analysis and research documentation with suitable external sensors, the platform could potentially accommodate additional non-invasive archaeological survey techniques.
 - **STEM classrooms and science clubs:** Build instruments, collect measurements, and compare experimental runs.
 - **Makers and open-source hardware developers:** Give homemade sensor packages a Home Assistant interface and mission archive.
