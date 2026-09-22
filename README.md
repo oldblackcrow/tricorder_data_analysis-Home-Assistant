@@ -79,6 +79,7 @@ Mission Analysis Page
 <img width="710" height="597" alt="image" src="https://github.com/user-attachments/assets/fa46cb4a-e43a-428c-9a77-ff39b354ae59" />
 <img width="720" height="597" alt="image" src="https://github.com/user-attachments/assets/25637518-e921-4889-abfd-e0eeaeabf23f" />
 
-Science Page:
+
+Science Page
 <img width="562" height="1021" alt="image" src="https://github.com/user-attachments/assets/bb052c8c-e7a0-4760-ba36-3cc8aab7e17f" />
 
