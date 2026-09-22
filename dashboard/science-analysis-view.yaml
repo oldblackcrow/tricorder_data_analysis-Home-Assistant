@@ -1,0 +1,329 @@
+# Standalone view for the dashboard Raw Configuration Editor.
+# The Mission Selector shares the SAME Mission A helper as the Tricorder page.
+# Do not paste this whole "views:" document inside an existing view's cards.
+views:
+- type: sections
+  max_columns: 3
+  title: SCIENCE
+  path: tricorder-science
+  icon: mdi:flask-outline
+  sections:
+  - type: grid
+    cards:
+    - type: custom:html-template-card
+      ignore_line_breaks: true
+      entities:
+      - sensor.tricorder_mission_catalog
+      - input_text.tric_archive_mission_id
+      - sensor.tricorder_mission_events
+      - sensor.tricorder_mission_scans
+      content: |
+        {% set selected_mid = states('input_text.tric_archive_mission_id') %}
+        {% set catalog_results =
+             state_attr('sensor.tricorder_mission_catalog', 'results') or [] %}
+      
+        {% set catalog_series = [] %} {% if catalog_results and catalog_results[0].get('series') %}
+          {% set catalog_series = catalog_results[0]['series'] %}
+        {% endif %}
+        {% set catalog_columns = [] %} {% set catalog_values = [] %}
+        {% if catalog_series %}
+          {% set catalog_columns = catalog_series[0].get('columns', []) %}
+          {% set catalog_values = catalog_series[0].get('values', []) %}
+        {% endif %}
+        <style>
+          .mission-card {
+            background:#000;
+            border-radius:38px;
+            padding:10px 18px;
+            overflow:hidden;
+            font-family:"Antonio","Arial Narrow",sans-serif;
+            box-sizing:border-box;
+          }
+      
+          .topline {
+            height:7px;
+            background:#8296ff;
+            margin:-5px -18px 9px -18px;
+          }
+      
+          .bottomline {
+            height:7px;
+            background:#8e87b6;
+            margin:10px -18px -5px -18px;
+          }
+      
+          .title {
+            color:#fff;
+            text-align:center;
+            font-size:18px;
+            font-weight:800;
+            letter-spacing:1.2px;
+            margin-bottom:9px;
+          }
+      
+          .section-title {
+            color:#8296ff;
+            font-size:10px;
+            font-weight:800;
+            letter-spacing:1.2px;
+            margin:7px 0 5px 0;
+          }
+      
+          .mission-row {
+            display:grid;
+            grid-template-columns:82px 1fr 110px;
+            height:32px;
+            margin:4px 0;
+            cursor:pointer;
+            border-radius:16px;
+            overflow:hidden;
+            background:#101010;
+            transition:transform .08s ease, box-shadow .08s ease;
+          }
+      
+          .mission-row:hover {
+            transform:scale(1.01);
+          }
+      
+          .mission-row.selected {
+            outline:1px solid #8296ff;
+            box-shadow:0 0 7px #8296ff66;
+          }
+      
+          .mission-code {
+            background:#8296ff;
+            color:#000;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:10px;
+            font-weight:900;
+          }
+      
+          .mission-name {
+            background:#111;
+            color:#fff;
+            display:flex;
+            align-items:center;
+            padding-left:12px;
+            font-size:10px;
+            font-weight:800;
+            overflow:hidden;
+            white-space:nowrap;
+            text-overflow:ellipsis;
+          }
+      
+          .mission-date {
+            background:#8e87b6;
+            color:#000;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:9px;
+            font-weight:900;
+            white-space:nowrap;
+          }
+      
+          .empty {
+            color:#777;
+            font-size:11px;
+            text-align:center;
+            padding:14px 5px;
+          }
+        </style>
+        <div class="mission-card">
+          <div class="topline"></div>
+      
+          <div class="title">
+            MISSION SELECT
+          </div>
+      
+          <div class="section-title">
+            AVAILABLE MISSIONS
+          </div>
+      
+          {% if catalog_values %}
+      
+            {% for row in catalog_values %}
+      
+              {% set time_i = catalog_columns.index('time') %}
+              {% set code_i = catalog_columns.index('mission_code') %}
+              {% set id_i = catalog_columns.index('mission_id') %}
+              {% set name_i = catalog_columns.index('mission_name') %}
+      
+              {% set raw_time = row[time_i] %}
+              {% set code = row[code_i] %}
+              {% set mid = row[id_i] %}
+              {% set name = row[name_i] | replace('_', ' ') %}
+      
+              {% set dt = as_datetime(raw_time) %}
+              {% if dt %}
+                {% set local_dt = as_local(dt) %}
+                {% set display_date = local_dt.strftime('%m/%d/%Y %H:%M') %}
+              {% else %}
+                {% set display_date = raw_time %}
+              {% endif %}
+      
+              <div
+                class="mission-row {% if mid == selected_mid %}selected{% endif %}"
+                onclick='
+                  const hass = document.querySelector("home-assistant").hass;
+                  hass.callService(
+                    "input_text",
+                    "set_value",
+                    {
+                      entity_id:"input_text.tric_archive_mission_id",
+                      value:{{ mid | to_json }}
+                    }
+                  );
+                '
+              >
+                <div class="mission-code">
+                  {{ code }}
+                </div>
+      
+                <div class="mission-name">
+                  {{ name }}
+                </div>
+      
+                <div class="mission-date">
+                  {{ display_date }}
+                </div>
+              </div>
+      
+            {% endfor %}
+      
+          {% else %}
+      
+            <div class="empty">
+              NO AVAILABLE MISSIONS
+            </div>
+      
+          {% endif %}
+      
+          <div class="bottomline"></div>
+        </div>
+      card_mod:
+        style: |
+          ha-card {
+            background:#29364c !important;
+            padding:2px !important;
+            border:none !important;
+            border-radius:40px !important;
+            box-shadow:none !important;
+            overflow:hidden !important;
+          }
+    - type: custom:html-template-card
+      ignore_line_breaks: true
+      entities:
+      - sensor.tricorder_science_analysis
+      - input_text.tric_archive_mission_id
+      - input_text.tric_science_baseline_mission_id
+      content: |
+        {% set selected = states('input_text.tric_archive_mission_id') %}
+        {% set baseline = states('input_text.tric_science_baseline_mission_id') %}
+        {% set status = state_attr('sensor.tricorder_science_analysis', 'status') or '' %}
+        {% set rows = state_attr('sensor.tricorder_science_analysis', 'rows') or [] %}
+        {% set note = state_attr('sensor.tricorder_science_analysis', 'note') or '' %}
+        {% set error = state_attr('sensor.tricorder_science_analysis', 'error') or '' %}
+        {% set valid_selected = selected not in ['', 'unknown', 'unavailable'] %}
+        <style>
+          .science-card{background:#000;border-radius:34px;padding:12px 17px;color:#fff;font-family:"Antonio","Arial Narrow",Arial,sans-serif}
+          .science-top{height:7px;background:#8296ff;border-radius:7px;margin-bottom:11px}
+          .science-title{font-size:19px;font-weight:900;letter-spacing:1.2px;text-align:center}
+          .science-sub{font-size:11px;color:#bbb;line-height:1.5;margin:9px 0}
+          .science-label{color:#8296ff;font-size:10px;font-weight:900;letter-spacing:1px}
+          .science-id{font-size:11px;overflow-wrap:anywhere;margin:2px 0 9px}
+          .science-button{padding:10px;text-align:center;border-radius:16px;color:#000;background:#8296ff;font-size:11px;font-weight:900;cursor:pointer;margin-bottom:12px}
+          .science-button:hover{filter:brightness(1.15)}
+          .science-row{border:1px solid #444;border-radius:15px;padding:10px;margin:8px 0;background:#121212}
+          .science-row.deviation{border-color:#f59e0b}
+          .science-row.uncertain{border-color:#7b79a8}
+          .science-measure{font-size:13px;font-weight:900}
+          .science-flag{font-size:10px;font-weight:900;color:#8296ff}
+          .science-row.deviation .science-flag{color:#f59e0b}
+          .science-nums{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin:8px 0}
+          .science-num{background:#242424;border-radius:9px;padding:7px 3px;text-align:center;font-size:13px;font-weight:800}
+          .science-num small{display:block;color:#aaa;font-size:9px;font-weight:400;padding-bottom:3px}
+          .science-meta{font-size:10px;color:#bbb;line-height:1.5}
+          .science-note{color:#aaa;font-size:10px;line-height:1.5;margin-top:10px}
+          .science-empty{padding:12px;color:#bbb;font-size:12px;text-align:center}
+        </style>
+        <div class="science-card">
+          <div class="science-top"></div>
+          <div class="science-title">SCIENCE · BASELINE ANALYSIS</div>
+          <div class="science-sub">
+            Compare <b>saved mission snapshots</b>. Choose Mission A using the
+            existing selector; then save a different mission as your reference.
+          </div>
+          <div class="science-label">CURRENT MISSION A</div>
+          <div class="science-id">{{ selected | e }}</div>
+          <div class="science-label">REFERENCE MISSION</div>
+          <div class="science-id">{{ baseline | e }}</div>
+          {% if valid_selected and selected != baseline %}
+            <div class="science-button"
+              onclick='document.querySelector("home-assistant").hass.callService(
+                "input_text","set_value",
+                {entity_id:"input_text.tric_science_baseline_mission_id",
+                 value:{{ selected | to_json }}});'>
+              USE MISSION A AS REFERENCE
+            </div>
+          {% endif %}
+          {% if status == 'ready' %}
+            {% for r in rows %}
+              {% set flagged = r.flag in ['outside_reference', 'count_difference'] %}
+              {% set uncertain = r.flag in ['limited_reference', 'low_counts'] %}
+              <div class="science-row {% if flagged %}deviation{% elif uncertain %}uncertain{% endif %}">
+                <div class="science-measure">{{ r.measurement | e }}</div>
+                <div class="science-flag">
+                  {% if flagged %}DEVIATION TO INVESTIGATE
+                  {% elif uncertain %}LIMITED EVIDENCE
+                  {% else %}WITHIN REFERENCE CHECK{% endif %}
+                </div>
+                <div class="science-nums">
+                  <div class="science-num"><small>REFERENCE</small>{{ r.baseline | round(2) }} {{ r.unit | e }}</div>
+                  <div class="science-num"><small>MISSION A</small>{{ r.current | round(2) }} {{ r.unit | e }}</div>
+                  <div class="science-num"><small>CHANGE</small>{% if r.delta > 0 %}+{% endif %}{{ r.delta | round(2) }} {{ r.unit | e }}</div>
+                </div>
+                <div class="science-meta">
+                  Reference: {{ r.baseline_n }} scan(s) · Mission A: {{ r.current_n }} scan(s)
+                  <br>Exploratory difference band: ±{{ r.band | round(2) }} {{ r.unit | e }}
+                  <br>{{ r.note | e }}
+                </div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <div class="science-empty">
+              {% if status == 'same_mission' %}
+                Mission A is the reference. Choose another mission to compare.
+              {% elif status == 'select_baseline' %}
+                Select Mission A, then use it as the reference.
+              {% elif status == 'select_mission' %}
+                Select a mission from the Mission Selector.
+              {% elif status == 'no_shared_scans' %}
+                These missions contain no matching saved scan types.
+              {% elif status == 'error' %}
+                Archive analysis error: {{ error | e }}
+              {% else %}
+                Awaiting science analysis sensor; check HA package installation.
+              {% endif %}
+            </div>
+          {% endif %}
+          <div class="science-note">
+            {{ note | e }}<br>
+            Thresholds are adjustable STEM heuristics, not sensor accuracy, health,
+            radiation safety, or hazard limits. eCO₂/TVOC are estimates; acoustic
+            levels are relative; magnetic comparisons depend on placement. Radiation
+            uses an approximate Poisson count check, not a safety determination.
+          </div>
+        </div>
+      card_mod:
+        style: |
+          ha-card {
+            background: #29364c !important;
+            padding: 2px !important;
+            border: none !important;
+            border-radius: 38px !important;
+            box-shadow: none !important;
+            overflow: hidden !important;
+          }
