@@ -8,8 +8,8 @@ mission. It is not continuous recording or automated hazard monitoring.
 ## Existing installation: what to add
 
 1. Back up your HA configuration. Copy
-   `tricorder/tricorder_science_analysis.py` to
-   `/config/tricorder/tricorder_science_analysis.py`.
+   `scripts/tricorder_science_analysis.py` to
+   `/config/scripts/tricorder_science_analysis.py`.
 2. Copy `packages/tricorder_science_analysis.yaml` to
    `/config/packages/tricorder_science_analysis.yaml`. Existing installations
    with `packages: !include_dir_named packages` pick it up after an HA restart.
@@ -65,6 +65,6 @@ A passing offline check does **not** establish compatibility with every HA
 release or the actual third-party HTML Template Card renderer.
 
 Example `TRICORDER_ARCHIVE_PATH=/path/to/test.jsonl python3
-tricorder/tricorder_science_analysis.py MISSION_A.jsonl REFERENCE.jsonl`.
+scripts/tricorder_science_analysis.py MISSION_A.jsonl REFERENCE.jsonl`.
 
 Do not commit live mission archives, locations, webhook IDs, or HA secrets.

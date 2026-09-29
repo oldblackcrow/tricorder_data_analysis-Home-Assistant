@@ -36,7 +36,8 @@ You can adapt the existing dashboard and data mappings for a tricorder, classroo
 
 ```text
 packages/       Home Assistant packages and sensor definitions
-tricorder/      Python archive and analysis utilities
+tricorder/      Python archive/radiation utilities and local mission data path
+scripts/        Science-analysis Python helper used by the HA package
 setup/          Configuration snippets, scripts, example upload receiver
 dashboard/      Tricorder and analysis views plus individual card YAML
 examples/       Fictional sample data for testing

@@ -1,5 +1,5 @@
 # TR-460 Science Analysis — optional add-on. Does not modify the upload receiver
-# or the existing eight scan cards. Requires tricorder_science_analysis.py.
+# or the existing eight scan cards. Requires /config/scripts/tricorder_science_analysis.py.
 #
 # Copy to /config/packages/tricorder_science_analysis.yaml and restart HA.
 
@@ -13,7 +13,7 @@ command_line:
       name: Tricorder Science Analysis
       unique_id: tricorder_science_analysis
       command: >-
-        python3 /config/tricorder/tricorder_science_analysis.py
+        python3 /config/scripts/tricorder_science_analysis.py
         "{{ states('input_text.tric_archive_mission_id') }}"
         "{{ states('input_text.tric_science_baseline_mission_id') }}"
       command_timeout: 10

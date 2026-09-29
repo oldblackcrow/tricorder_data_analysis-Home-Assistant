@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - A backed-up Home Assistant instance; source system was **2026.9.3**. Other versions have **not** been verified.
-- Python 3 available for HA command-line/shell-command integration, and writable `/config/tricorder/`.
+- Python 3 available for HA command-line/shell-command integration, with writable `/config/tricorder/` and `/config/scripts/`.
 - The Home Assistant **File** integration configured as a notifier named `notify.file`, writing to `/config/tricorder/tricorder_uploads.jsonl`; it is what persists each upload as JSONL. Verify the entity name **exactly** before enabling the receiver.
 - The third-party **HTML/Jinja2 Template Card** (`custom:html-template-card`) and **card-mod**. Graph popups use **browser_mod**. Install these separately from their original distributors; nothing from HACS is redistributed here. The removed OTA action formerly used Mushroom, but the included cards don't require it.
 - Optional compatible LCARS theme: the installed system's `LCARS Modern` theme was not redistributed. Apply your own available theme after import.
@@ -11,7 +11,7 @@
 ## Setup, in order
 
 1. **Make a backup**. Copy the seven files from `packages/` into `/config/packages/`; merge `setup/configuration-snippets.yaml` into your existing `/config/configuration.yaml`. Do **not** overwrite your existing Home Assistant configuration or duplicate top-level keys such as `homeassistant:`, `command_line:` or `shell_command:`.
-2. Copy all three `tricorder/*.py` files to `/config/tricorder/`. Create an empty writable `/config/tricorder/tricorder_uploads.jsonl` and, if needed, an `archive_state.json` containing `{"archived":{}}`. Keep both files private. `archive_manager.py` supports archive/restore/delete; deletion is permanent.
+2. Copy all three `tricorder/*.py` files to `/config/tricorder/`. Copy `scripts/tricorder_science_analysis.py` to `/config/scripts/tricorder_science_analysis.py`. Create an empty writable `/config/tricorder/tricorder_uploads.jsonl` and, if needed, an `archive_state.json` containing `{"archived":{}}`. Keep both files private. `archive_manager.py` supports archive/restore/delete; deletion is permanent.
 3. In HA's **File integration**, create a file notifier at `/config/tricorder/tricorder_uploads.jsonl` and ensure its target is `notify.file`. Test that a non-sensitive message writes one JSON record on a line. If you have a different entity, update the receiver's first action to match it.
 4. Merge the three entries in `setup/tricorder_scripts.yaml` into existing `scripts.yaml`; ensure `script: !include scripts.yaml` (or an equivalent include) is configured. Reload scripts after checking YAML.
 5. Copy `setup/tricorder_upload_receiver.example.yaml` into `automations.yaml` (merge the one list item, do not replace other automations). **Replace the placeholder webhook ID with a fresh private random value on your own HA instance; never commit that value.** Receiver is local-only, POST-only as extracted. Do not expose the webhook or assume webhook IDs alone provide robust access control. Keep uploads on trusted network paths and add external access protection if you choose remote use.

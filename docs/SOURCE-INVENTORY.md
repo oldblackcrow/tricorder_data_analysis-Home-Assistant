@@ -3,7 +3,8 @@
 | Original backup location | What this repo does |
 |---|---|
 | `/config/packages/tricorder*.yaml` | Copies seven HA-only packages. Omits the deprecated `tricorder_influxdb.yaml` with a token reference. |
-| `/config/tricorder/*.py` | Copies three Python source files. |
+| `/config/tricorder/*.py` | Copies three Python archive/radiation source files. |
+| `/config/scripts/tricorder_science_analysis.py` | Copies the science-analysis helper used by `packages/tricorder_science_analysis.yaml`. |
 | `/config/tricorder/tricorder_uploads.jsonl` | **Never copied**; includes personal scans/locations. |
 | `/config/tricorder/archive_state.json` | **Never copied**; includes personal mission identifiers. |
 | `/config/automations.yaml` | Extracts only “Tricorder Upload Receiver”; removes the private webhook ID and twelve defunct InfluxDB actions. |
