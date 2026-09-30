@@ -788,5 +788,7 @@
         - action: input_boolean.turn_off
           target:
             entity_id: input_boolean.tric_mission_active
+  # A full mission posts many one-second scan points in a short burst.
+  # Keep the webhook queue large enough to retain the whole mission upload.
   mode: queued
-  max: 20
+  max: 500
