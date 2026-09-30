@@ -95,9 +95,14 @@ def load_records(mode=None, mission_id=""):
                     if record_mission != mission_id:
                         continue
                 elif mode in ("scans", "comparison"):
+                    unlinked_radiation = (
+                        not record_mission
+                        and kind in ("radiation_scan", "scan_summary")
+                    )
                     if not (
                         record_mission == mission_id
-                        or kind == "mission_start"
+                        or kind in ("mission_start", "mission_end")
+                        or unlinked_radiation
                         or (kind == "location_update" and not record_mission)
                     ):
                         continue
@@ -734,15 +739,37 @@ def _mission_location_row(record, mission_id, source):
     return row
 
 
-def _selected_mission_window(records, mission_id):
-    """Return a bounded start/end interval for untagged GPS updates.
+def _mission_id_parts(mission_id):
+    """Return the filename's local start time and mission code, if present."""
+    name = os.path.basename(str(mission_id or ""))
+    if not (name.startswith("mission_") and name.endswith(".jsonl")):
+        return None, ""
+    parts = name[:-6].split("_", 3)
+    if len(parts) < 4:
+        return None, ""
+    try:
+        start = datetime.strptime(
+            parts[1] + "_" + parts[2],
+            "%Y%m%d_%H%M%S",
+        ).timestamp()
+    except (ValueError, OverflowError, OSError):
+        start = None
+    return start, parts[3]
 
-    A nearby fix *after* mission_end is not known to belong to that
-    mission. An open-ended mission is not used for time inference.
+
+def _selected_mission_window(records, mission_id):
+    """Return a bounded mission interval for records lacking mission_file.
+
+    The mission filename supplies an exact start-time fallback. An untagged
+    mission_end may close the interval when its mission_code matches. The
+    next mission start bounds the interval so repeated mission codes cannot
+    pull a later scan into the selected mission.
     """
+    filename_start, filename_code = _mission_id_parts(mission_id)
     starts = []
     ends = []
     all_starts = []
+    selected_code = filename_code
     for record in records:
         kind = record.get("record_type")
         if kind not in ("mission_start", "mission_end"):
@@ -754,8 +781,17 @@ def _selected_mission_window(records, mission_id):
             all_starts.append(when)
             if record.get("mission_file") == mission_id:
                 starts.append(when)
-        elif kind == "mission_end" and record.get("mission_file") == mission_id:
-            ends.append(when)
+                selected_code = str(record.get("mission_code", "") or "")
+        elif kind == "mission_end":
+            record_mission = str(record.get("mission_file", "") or "")
+            record_code = str(record.get("mission_code", "") or "")
+            if record_mission == mission_id:
+                ends.append(when)
+            elif not record_mission and selected_code and record_code == selected_code:
+                ends.append(when)
+
+    if not starts and filename_start is not None:
+        starts.append(filename_start)
 
     if not starts:
         return None
@@ -780,13 +816,26 @@ def mission_scans(records, mission_id):
 
     grouped = {}
     radiation_series_seen = set()
+    window = _selected_mission_window(records, mission_id)
+    _, selected_code = _mission_id_parts(mission_id)
 
     for r in records:
 
-        if str(
-            r.get("mission_file", "") or ""
-        ) != mission_id:
-            continue
+        record_mission = str(r.get("mission_file", "") or "")
+        if record_mission != mission_id:
+            if record_mission or r.get("record_type") not in (
+                "radiation_scan",
+                "scan_summary",
+            ):
+                continue
+            if window is None:
+                continue
+            when = _record_timestamp(r.get("time"))
+            if when is None or not (window[0] <= when <= window[1]):
+                continue
+            record_code = str(r.get("mission_code", "") or "")
+            if selected_code and record_code and record_code != selected_code:
+                continue
 
         # Mission start/end records contain coordinates even when no
         # location_update carries a mission_file identifier.
@@ -843,7 +892,6 @@ def mission_scans(records, mission_id):
 
     # Older GPS updates may have no mission_file. Associate only those
     # timestamped *inside* a completed mission, not nearby orphaned fixes.
-    window = _selected_mission_window(records, mission_id)
     if window is not None:
         start, end = window
         for r in records:
