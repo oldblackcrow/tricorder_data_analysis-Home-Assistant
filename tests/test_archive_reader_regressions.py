@@ -67,3 +67,38 @@ def test_unselected_mission_does_not_need_existing_archive(tmp_path):
     result = run_reader(tmp_path, "scans", "unavailable")
     assert result["count"] == 0
     assert "error" not in result
+
+def test_unlinked_radiation_record_is_assigned_by_mission_time_window(tmp_path):
+    archive = tmp_path / "uploads.jsonl"
+    records = [
+        {"record_type": "mission_start", "mission_code": "GS-001",
+         "time": "2026-09-29T17:51:42"},
+        {"record_type": "radiation_scan", "mission_code": "GS-001",
+         "time": "2026-09-29T17:55:51", "elapsed_seconds": 250.1,
+         "radiation_record_id": 75, "cpm": 4.0, "dose_usvh": 0.0753,
+         "pulses": 1, "duration_seconds": 15.02,
+         "pulse_bins": [0, 0, 0, 0, 1]},
+        {"record_type": "mission_end", "mission_code": "GS-001",
+         "time": "2026-09-29T17:56:10"},
+        {"record_type": "mission_start", "mission_code": "GS-001",
+         "time": "2026-09-29T18:00:00"},
+        {"record_type": "radiation_scan", "mission_code": "GS-001",
+         "time": "2026-09-29T18:00:05", "radiation_record_id": 76,
+         "pulse_bins": [1]},
+        {"record_type": "mission_end", "mission_code": "GS-001",
+         "time": "2026-09-29T18:00:10"},
+    ]
+    archive.write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+    mission_a = "mission_20260929_175142_GS-001.jsonl"
+    scans = run_reader(tmp_path, "scans", mission_a)
+
+    summary = series_rows(scans, "tricorder_radiation")
+    pulse_rows = series_rows(scans, "tricorder_radiation_series")
+    assert len(summary) == 1
+    assert summary[0]["record_id"] == 75
+    assert [row["pulse_1s"] for row in pulse_rows] == [0, 0, 0, 0, 1]
+
