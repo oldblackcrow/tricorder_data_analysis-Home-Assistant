@@ -1,21 +1,28 @@
 type: custom:html-template-card
 ignore_line_breaks: true
 entities:
-- sensor.tricorder_mission_scans
-- input_text.tric_archive_mission_id
-content: |
-  {# Magnetic values and graphs belong ONLY to the selected mission. #} {% set selected_mid = states('input_text.tric_archive_mission_id') | trim %} {% set scan_results =
+  - sensor.tricorder_mission_scans
+  - input_text.tric_archive_mission_id
+content: >
+  {# Magnetic values and graphs belong ONLY to the selected mission. #} {% set
+  selected_mid = states('input_text.tric_archive_mission_id') | trim %} {% set
+  scan_results =
        state_attr('sensor.tricorder_mission_scans', 'results') or [] %}
-  {% set scan_series = [] %} {% if scan_results and scan_results[0].get('series') %}
+  {% set scan_series = [] %} {% if scan_results and
+  scan_results[0].get('series') %}
     {% set scan_series = scan_results[0]['series'] %}
   {% endif %}
+
   {% set mag = namespace(columns=[], rows=[]) %} {% for series in scan_series %}
     {% if series.get('name', '') == 'tricorder_magnetic' %}
       {% set mag.columns = series.get('columns', []) %}
       {% set mag.rows = series.get('values', []) %}
     {% endif %}
   {% endfor %}
-  {# Ignore data from the previously selected mission during refresh. #} {% set mission_rows = namespace(rows=[]) %} {% if selected_mid and 'mission_id' in mag.columns %}
+
+  {# Ignore data from the previously selected mission during refresh. #} {% set
+  mission_rows = namespace(rows=[]) %} {% if selected_mid and 'mission_id' in
+  mag.columns %}
     {% set mi = mag.columns.index('mission_id') %}
     {% for row in mag.rows %}
       {% if row[mi] | string == selected_mid %}
@@ -23,7 +30,29 @@ content: |
       {% endif %}
     {% endfor %}
   {% endif %}
-  {# Most recent contiguous magnetic scan within the selected mission. #} {% set mag_cluster = namespace(rows=[], active=true, last_ts=none) %} {% if mission_rows.rows and 'time' in mag.columns %}
+
+  {# Prefer the Pynt record ID, matching the Radiation card's exact-scan
+  selection. #} {% set mag_scan = namespace(record_id=none) %} {% if 'record_id'
+  in mag.columns and 'magnetic_field_ut' in mag.columns %}
+    {% set ri = mag.columns.index('record_id') %}
+    {% set fi = mag.columns.index('magnetic_field_ut') %}
+    {% for row in mission_rows.rows %}
+      {% if row[ri] not in [none, ''] and row[fi] is not none %}
+        {% set mag_scan.record_id = row[ri] %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+
+  {% set mag_cluster = namespace(rows=[], active=true, last_ts=none) %} {% if
+  mag_scan.record_id is not none and 'record_id' in mag.columns %}
+    {% set ri = mag.columns.index('record_id') %}
+    {% for row in mission_rows.rows %}
+      {% if row[ri] | string == mag_scan.record_id | string %}
+        {% set mag_cluster.rows = mag_cluster.rows + [row] %}
+      {% endif %}
+    {% endfor %}
+  {% elif mission_rows.rows and 'time' in mag.columns %}
+    {# Older archives without record IDs: fall back to the last contiguous scan. #}
     {% set ti = mag.columns.index('time') %}
     {% for row in mission_rows.rows | reverse %}
       {% if mag_cluster.active %}
@@ -41,7 +70,9 @@ content: |
       {% endif %}
     {% endfor %}
   {% endif %}
-  {# Final null/end-of-scan samples must not erase actual measurements. #} {% set vals = namespace(field=none, heading=none, bx=none, by=none,
+
+  {# Final null/end-of-scan samples must not erase actual measurements. #} {%
+  set vals = namespace(field=none, heading=none, bx=none, by=none,
                           bz=none, recorded='--') %}
   {% if mag_cluster.rows and 'time' in mag.columns %}
     {% set ti = mag.columns.index('time') %}
@@ -72,6 +103,7 @@ content: |
       {% endif %}
     {% endfor %}
   {% endif %} {% set magnetic_recorded = vals.recorded %}
+
   {% macro sensor_popup(columns, rows, field, label, unit, color,
                          recorded, decimals=1) %}
     {% set ns = namespace(points=[], values=[], first_ts=none, last_ts=none) %}
@@ -85,12 +117,18 @@ content: |
           {% set dt = as_datetime(row[ti]) %}
           {% if dt %}
             {% set ts = as_timestamp(dt) %}
-            {% set field_v = row[columns.index('magnetic_field_ut')] if 'magnetic_field_ut' in columns else none %}
-            {% set heading_v = row[columns.index('heading_deg')] if 'heading_deg' in columns else none %}
-            {% set bx_v = row[columns.index('mag_x_ut')] if 'mag_x_ut' in columns else none %}
-            {% set by_v = row[columns.index('mag_y_ut')] if 'mag_y_ut' in columns else none %}
-            {% set bz_v = row[columns.index('mag_z_ut')] if 'mag_z_ut' in columns else none %}
-            {% set mission_v = row[columns.index('elapsed_seconds')] if 'elapsed_seconds' in columns else none %}
+            {% set raw_field_v = row[columns.index('magnetic_field_ut')] if 'magnetic_field_ut' in columns else none %}
+            {% set raw_heading_v = row[columns.index('heading_deg')] if 'heading_deg' in columns else none %}
+            {% set raw_bx_v = row[columns.index('mag_x_ut')] if 'mag_x_ut' in columns else none %}
+            {% set raw_by_v = row[columns.index('mag_y_ut')] if 'mag_y_ut' in columns else none %}
+            {% set raw_bz_v = row[columns.index('mag_z_ut')] if 'mag_z_ut' in columns else none %}
+            {% set raw_mission_v = row[columns.index('elapsed_seconds')] if 'elapsed_seconds' in columns else none %}
+            {% set field_v = (raw_field_v | float(0)) if raw_field_v is not none else none %}
+            {% set heading_v = (raw_heading_v | float(0)) if raw_heading_v is not none else none %}
+            {% set bx_v = (raw_bx_v | float(0)) if raw_bx_v is not none else none %}
+            {% set by_v = (raw_by_v | float(0)) if raw_by_v is not none else none %}
+            {% set bz_v = (raw_bz_v | float(0)) if raw_bz_v is not none else none %}
+            {% set mission_v = (raw_mission_v | float(0)) if raw_mission_v is not none else none %}
             {% if ns.first_ts is none %}
               {% set ns.first_ts = ts %}
             {% endif %}
@@ -217,14 +255,14 @@ content: |
                 <div style="font-size:11px;font-weight:900;color:{{ color }};letter-spacing:.8px;">SAMPLE {{ c['index'] }}</div>
                 <div style="font-size:10px;color:#aaa;">{{ c['p']['time'] }} · +{{ c['offset'] }} s</div>
               </div>
-              <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px;">
-                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:7px;color:#666;">FIELD</div><div style="font-size:11px;font-weight:900;">{{ c['p']['field'] | round(2) if c['p']['field'] is not none else '--' }}{% if c['p']['field'] is not none %} µT{% endif %}</div></div>
-                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:7px;color:#666;">HEAD</div><div style="font-size:11px;font-weight:900;">{{ c['p']['heading'] | round(1) if c['p']['heading'] is not none else '--' }}{% if c['p']['heading'] is not none %}°{% endif %}</div></div>
-                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:7px;color:#666;">Bx</div><div style="font-size:11px;font-weight:900;">{{ c['p']['bx'] | round(2) if c['p']['bx'] is not none else '--' }}{% if c['p']['bx'] is not none %} µT{% endif %}</div></div>
-                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:7px;color:#666;">By</div><div style="font-size:11px;font-weight:900;">{{ c['p']['by'] | round(2) if c['p']['by'] is not none else '--' }}{% if c['p']['by'] is not none %} µT{% endif %}</div></div>
-                <div style="background:#050505;border-radius:8px;padding:6px;text-align:center;"><div style="font-size:7px;color:#666;">Bz</div><div style="font-size:11px;font-weight:900;">{{ c['p']['bz'] | round(2) if c['p']['bz'] is not none else '--' }}{% if c['p']['bz'] is not none %} µT{% endif %}</div></div>
+              <div style="background:#050505;border-radius:8px;padding:7px;text-align:center;font-size:9px;line-height:1.6;">
+                <span style="color:#777;">FIELD </span>{{ c['p']['field'] | round(2) if c['p']['field'] is not none else '--' }}{% if c['p']['field'] is not none %} µT{% endif %}
+                · <span style="color:#777;">HEAD </span>{{ c['p']['heading'] | round(1) if c['p']['heading'] is not none else '--' }}{% if c['p']['heading'] is not none %}°{% endif %}
+                · <span style="color:#777;">Bx </span>{{ c['p']['bx'] | round(2) if c['p']['bx'] is not none else '--' }}
+                · <span style="color:#777;">By </span>{{ c['p']['by'] | round(2) if c['p']['by'] is not none else '--' }}
+                · <span style="color:#777;">Bz </span>{{ c['p']['bz'] | round(2) if c['p']['bz'] is not none else '--' }}
+                · <span style="color:#777;">MISSION </span>{% if c['p']['mission'] is not none %}{{ c['p']['mission'] | round(1) }} s{% else %}--{% endif %}
               </div>
-              <div style="text-align:center;color:#777;font-size:8px;margin-top:6px;">MISSION {% if c['p']['mission'] is not none %}{{ c['p']['mission'] | round(1) }} s{% else %}--{% endif %}</div>
             </div>
           {% endfor %}
         </div>
@@ -250,20 +288,6 @@ content: |
           </div>
         </div>
 
-        <div style="margin-top:12px;background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:8px;">
-          <div style="font-size:9px;color:#888;font-weight:800;letter-spacing:1px;margin-bottom:5px;">SAMPLE DETAIL</div>
-          {% for c in graph.coords %}
-            <label class="mag-choice" for="{{ field }}-pick-{{ c['index'] }}" style="display:grid;grid-template-columns:44px 1fr 1fr 1fr 1fr 1fr;gap:4px;align-items:center;padding:5px 0;border-top:1px solid #181818;font-size:9px;">
-              <div style="color:#888;">{{ c['p']['time'] }}</div>
-              <div><span style="color:#777;">F </span>{{ c['p']['field'] | round(2) if c['p']['field'] is not none else '--' }}</div>
-              <div><span style="color:#777;">H </span>{{ c['p']['heading'] | round(1) if c['p']['heading'] is not none else '--' }}</div>
-              <div><span style="color:#777;">X </span>{{ c['p']['bx'] | round(2) if c['p']['bx'] is not none else '--' }}</div>
-              <div><span style="color:#777;">Y </span>{{ c['p']['by'] | round(2) if c['p']['by'] is not none else '--' }}</div>
-              <div><span style="color:#777;">Z </span>{{ c['p']['bz'] | round(2) if c['p']['bz'] is not none else '--' }}</div>
-            </label>
-          {% endfor %}
-        </div>
-
         <label class="mag-choice" for="{{ field }}-pick-{{ count }}" style="display:block;margin-top:10px;text-align:center;font-size:11px;color:#888;">LAST {{ latest_value | round(decimals) }} {{ unit }}</label>
         <div style="height:7px;background:{{ color }};border-radius:8px;margin-top:13px;"></div>
       </div>
@@ -274,6 +298,7 @@ content: |
       </div>
     {% endif %}
   {% endmacro %}
+
   {% set field_popup = sensor_popup(
     mag.columns, mag_cluster.rows,
     'magnetic_field_ut','MAGNETIC FIELD','µT','#f59e0b',
@@ -326,6 +351,7 @@ content: |
     .round-left {border-radius:15px 0 0 15px;}
     ha-icon {--mdc-icon-size:16px;}
   </style>
+
   <div class="mag-card">
     <div class="mag-topline"></div>
     <div class="mag-title">MAGNETIC FIELD</div>
