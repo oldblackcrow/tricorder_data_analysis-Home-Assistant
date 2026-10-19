@@ -8,6 +8,9 @@ homeassistant:
   packages: !include_dir_named packages
 
 shell_command:
+  # Render an uploaded 32x24 thermal snapshot to a viewable HA image.
+  tricorder_render_thermal: >-
+    python3 /config/tricorder/thermal_snapshot_render.py
   tricorder_archive_mission: >-
     python3 /config/tricorder/archive_manager.py archive "{{ states('input_text.tric_archive_mission_id') }}"
   tricorder_restore_mission: >-
