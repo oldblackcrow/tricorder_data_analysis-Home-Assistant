@@ -20,6 +20,61 @@
 8. Ensure the sender posts JSON records matching the existing TR-460 payload format to your new private local webhook. The physical sender/firmware is **not included**. Use `examples/tricorder_uploads.example.jsonl` as fictional test records: copy the *lines*, not the example file itself, into a **test** archive if desired.
 9. Verify selecting a mission refreshes all the relevant dashboard cards. The mission selector changes `input_text.tric_archive_mission_id`; the automation in `packages/tricorder_archive.yaml` refreshes the events and scans sensors. Avoid adding a second refresh in dashboard JavaScript, which rereads the archive unnecessarily. In particular, the Radiation, Color, Orientation and Magnetic cards are the revised mission-aware versions from the backed-up HA dashboard.
 
+## MaTouch Rev078: Thermal Images and Subspace Uplink
+
+The MaTouch `matouch-geiger-014` branch now includes on-device HA receiver
+configuration: on the instrument, manually connect Wi-Fi, open
+**ARCHIVE > FILE TRANSFER**, start its local server, and browse to
+`http://tricorder.local/`. Under **SUBSPACE UPLINK SETTINGS**, enter the
+local HA server address (default `http://192.168.87.73:8123`) and the
+**private webhook ID** from the active Tricorder Upload Receiver automation.
+Select **SAVE UPLINK SETTINGS** and **TEST RECEIVER**. The ID remains in
+MaTouch NVS and is not published on GitHub. The receiver test sends a small
+`uplink_test` JSON record; verify it appears in your private JSONL archive.
+An HTTP success indicates acceptance, not proof that every HA display updated.
+
+For **thermal snapshots**, add the following once on your live HA installation:
+
+1. Copy `tricorder/thermal_snapshot_render.py` from this repo to
+   `/config/tricorder/thermal_snapshot_render.py`.
+2. Merge `shell_command.tricorder_render_thermal` from
+   `setup/configuration-snippets.yaml` into your existing
+   `configuration.yaml`, **without overwriting other shell commands**.
+3. Add the new conditional **thermal_snapshot** `if/then` action immediately
+   after the `notify.file` action in your existing
+   **Tricorder Upload Receiver** automation. The updated public example
+   in `setup/tricorder_upload_receiver.example.yaml` shows the exact
+   block. **Keep your actual webhook ID**; do not replace your full
+   installed automation with the sample.
+4. Check HA configuration and reload/restart the applicable services.
+   On the MaTouch, save a 10/15/30-second THERMAL scan; it captures one
+   *complete 32×24 thermal frame* starting at the scan midpoint.
+   After the scan ends, connect Wi-Fi and run SUBSPACE UPLINK.
+5. The renderer stores an image per scan at
+   `/config/www/tricorder_thermal/thermal_distance_XXXXXXXX.png`,
+   plus `latest.png` and `index.json`. The raw grid (0.1°C per value)
+   stays in the **private** `tricorder_uploads.jsonl` archive,
+   correlated with `archive_file` and `mission_file`.
+
+To view the most recent image, add a Home Assistant **Picture** card with
+the URL `/local/tricorder_thermal/latest.png`. Browsers may cache
+`latest.png`; a refresh or a cache-busting image URL updates it. For
+individual mission images, use the dated scan-specific URLs in
+`/local/tricorder_thermal/index.json`.
+
+**AI interpretation:** These PNGs can be supplied to an image-capable
+Computer/voice-assistant model, and the private JSONL archive preserves raw
+temperatures for structured analysis. This repo does **not** automatically
+configure a vision model or authorize one to browse HA files; that
+integration still requires an image-capable model/tool with access to the
+specific snapshot. Object guesses from 32×24 thermal images are tentative.
+
+**Privacy:** Files beneath `/config/www` are accessible by their static
+`/local` URL; do not place sensitive photos or names there if your HA is
+reachable from untrusted networks. Keep the webhook ID and JSONL archive
+private. The media-transfer server is operator-enabled only and remains
+off on boot.
+
 ## Scope caveats
 
 - `setup/tricorder_upload_receiver.example.yaml` deliberately drops **12 retired InfluxDB-writing actions**; it still writes to `notify.file` and updates helpers. The deprecated `packages/tricorder_influxdb.yaml` is not shipped.
