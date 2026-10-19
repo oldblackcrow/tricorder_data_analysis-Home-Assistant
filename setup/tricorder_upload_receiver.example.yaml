@@ -16,6 +16,13 @@
       entity_id: notify.file
     data:
       message: '{{ trigger.json | to_json }}'
+  # Render one color thermal PNG only after the raw grid is saved.
+  # Requires shell_command.tricorder_render_thermal from configuration-snippets.yaml.
+  - if:
+    - condition: template
+      value_template: "{{ trigger.json.get('record_type', '') == 'thermal_snapshot' }}"
+    then:
+    - action: shell_command.tricorder_render_thermal
   - choose:
     - conditions:
       - condition: template
