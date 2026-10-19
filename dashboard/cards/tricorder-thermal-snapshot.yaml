@@ -1,0 +1,12 @@
+# TR-460 latest thermal midpoint snapshot.
+# Requires the renderer in tricorder/thermal_snapshot_render.py and
+# the receiver's thermal_snapshot conditional action.
+# The raw temperatures remain in /config/tricorder/tricorder_uploads.jsonl.
+type: picture
+image: /local/tricorder_thermal/latest.png
+alt_text: Latest TR-460 Thermal Snapshot
+tap_action:
+  action: url
+  url_path: /local/tricorder_thermal/latest.png
+hold_action:
+  action: none
