@@ -8,6 +8,9 @@ homeassistant:
   packages: !include_dir_named packages
 
 shell_command:
+  # Reassemble Rev098 Captain's Log .adp files from private JSONL webhook events.
+  tricorder_receive_captain_log: >-
+    python3 /config/tricorder/captain_log_receiver.py
   # Render an uploaded 32x24 thermal snapshot to a viewable HA image.
   tricorder_render_thermal: >-
     python3 /config/tricorder/thermal_snapshot_render.py
