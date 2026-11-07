@@ -2785,6 +2785,33 @@ views:
 
         {% set peak_popup = sensor_popup(
           'peak_db','relative_db','PEAK LEVEL','dB','#f59e0b',1) %}
+{# Only completed WAV transfers materialize in the per-mission media list. #}
+{% set recordings = namespace(columns=[], rows=[]) %}
+{% for wav_series in scan_series %}
+  {% if wav_series.get('name','') == 'tricorder_audio_files' %}
+    {% set recordings.columns = wav_series.get('columns',[]) %}
+    {% set recordings.rows = wav_series.get('values',[]) %}
+  {% endif %}
+{% endfor %}
+{% set recordings_popup %}
+<div style="background:#050505;color:#f4f4f4;padding:13px;font-family:Antonio,Arial Narrow,sans-serif">
+  {% if recordings.rows and 'media_url' in recordings.columns %}
+    <div style="font-size:12px;color:#aaa;margin-bottom:10px">WAV RECORDINGS - SELECTED MISSION</div>
+    {% set file_idx = recordings.columns.index('file') if 'file' in recordings.columns else none %}
+    {% set media_idx = recordings.columns.index('media_url') %}
+    {% for wav in recordings.rows | reverse %}
+      <div style="padding:10px;background:#141414;margin-bottom:10px;border-radius:9px">
+        <div style="font-size:13px;color:#b5c5ff;margin-bottom:5px">{{ wav[file_idx] if file_idx is not none else 'AUDIO RECORDING' }}</div>
+        <audio controls preload="none" src="{{ wav[media_idx] }}" style="width:100%"></audio>
+        <a href="{{ wav[media_idx] }}" target="_blank" rel="noopener noreferrer" style="display:block;color:#8ebfff;font-size:11px;margin-top:5px">OPEN / SAVE WAV</a>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div style="padding:14px;color:#aaa;text-align:center">No uploaded WAV files for this mission.</div>
+    <div style="color:#777;font-size:12px;text-align:center">Rev100 WAV upload and HA receiver must be installed.</div>
+  {% endif %}
+</div>
+{% endset %}
 
         <style>
           .env-card {
@@ -2940,6 +2967,13 @@ views:
             </div>
           </div>
 
+          <div class="env-row left"
+            onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"AUDIO RECORDINGS",content:{{ recordings_popup | to_json }},initial_style:"normal"}}}}))'>
+            <div class="env-cap leftcap" style="background:#22c55e"><ha-icon icon="mdi:music-box-multiple"></ha-icon></div>
+            <div class="env-value">{{ recordings.rows | length }}<span class="unit">WAV FILES</span></div>
+            <div class="env-label round-right" style="background:#22c55e">RECORDINGS</div>
+          </div>
+          
           <div class="env-bottomline"></div>
         </div>
       card_mod:
