@@ -25,9 +25,26 @@ automation:
             - sensor.tricorder_mission_events
             - sensor.tricorder_mission_scans
             - sensor.tricorder_comparison_mission_scans
+            - sensor.tricorder_captains_logs
       - action: persistent_notification.create
         data:
           title: "TR-460 Subspace Uplink"
           message: "New tricorder data has arrived in Home Assistant. Mission archive sensors have been refreshed."
           notification_id: tricorder_uplink_received
     mode: restart
+
+# Private Captain's Logs: only the short metadata list goes into HA state.
+# The .adp originals stay under /config/tricorder/captains.
+# Browser-playable .wav copies stay in authenticated /media/tricorder_captains.
+command_line:
+  - sensor:
+      name: Tricorder Captain's Logs
+      unique_id: tricorder_captains_logs
+      command: >-
+        python3 /config/tricorder/tricorder_archive_reader.py captains
+      command_timeout: 15
+      scan_interval: 86400
+      value_template: >-
+        {{ value_json.get('count', 0) | int(0) }}
+      json_attributes:
+        - results
