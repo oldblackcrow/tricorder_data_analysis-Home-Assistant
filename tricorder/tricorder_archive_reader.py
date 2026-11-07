@@ -20,6 +20,13 @@ THERMAL_ARCHIVE_NAME = re.compile(r"thermal_distance_[0-9]{8}\\.jsonl\\Z")
 THERMAL_RENDER_DIR = os.environ.get(
     "TRICORDER_THERMAL_IMAGE_DIR", "/config/www/tricorder_thermal"
 )
+AUDIO_FILE_NAME = re.compile(r"audio_[0-9]{8}\.wav\Z")
+AUDIO_MEDIA_DIR = os.environ.get(
+    "TRICORDER_AUDIO_MEDIA_DIR", "/media/tricorder_audio"
+)
+AUDIO_META_DIR = os.environ.get(
+    "TRICORDER_AUDIO_METADATA_DIR", "/config/tricorder/recordings"
+)
 
 
 SCAN_TYPES = {
@@ -824,6 +831,7 @@ def mission_scans(records, mission_id):
 
     grouped = {}
     radiation_series_seen = set()
+    wav_files_seen = set()
     window = _selected_mission_window(records, mission_id)
     _, selected_code = _mission_id_parts(mission_id)
 
@@ -853,6 +861,41 @@ def mission_scans(records, mission_id):
             )
             if location is not None:
                 grouped.setdefault("tricorder_location", []).append(location)
+            continue
+
+        # Audio-scan WAVs are linked by their begin manifest's mission ID.
+        # Expose only completed WAV files restored under authenticated /media.
+        if r.get("record_type") == "audio_recording_begin":
+            name = r.get("file", "")
+            if (isinstance(name, str) and AUDIO_FILE_NAME.fullmatch(name)
+                    and name not in wav_files_seen
+                    and os.path.isfile(os.path.join(AUDIO_MEDIA_DIR, name))):
+                metadata_file = os.path.join(
+                    AUDIO_META_DIR, name[:-4] + ".json"
+                )
+                try:
+                    with open(metadata_file, encoding="utf-8") as stream:
+                        meta = json.load(stream)
+                except (OSError, ValueError, UnicodeError):
+                    meta = {}
+                if (meta.get("file") == name and
+                        meta.get("record_type") == "audio_recording"):
+                    started = meta.get("started_unix")
+                    timestamp = None
+                    if isinstance(started, int) and started > 1700000000:
+                        try:
+                            timestamp = datetime.fromtimestamp(started).isoformat()
+                        except (OverflowError, ValueError, OSError):
+                            pass
+                    audio = {
+                        "time": timestamp,
+                        "file": name,
+                        "media_url": "/media/local/tricorder_audio/" + name,
+                        "sample_rate": meta.get("sample_rate"),
+                    }
+                    audio.update(common_tags(r, mission_id))
+                    grouped.setdefault("tricorder_audio_files", []).append(audio)
+                    wav_files_seen.add(name)
             continue
 
         # Mission-linked image gallery. The original 32x24 thermal grid
