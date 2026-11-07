@@ -128,9 +128,8 @@ def atomic_write(path, content):
 
 
 def restore(completion):
-    tx = completion["transfer_id"]
-    filename = completion["file"]
-    size = completion["bytes"]
+    tx, filename = completion["transfer_id"], completion["file"]
+    size, total = completion["bytes"], completion["chunks"]
     target = DEST / filename
     if target.exists():
         if (target.stat().st_size == size
@@ -139,63 +138,61 @@ def restore(completion):
             return "already-present"
         raise ValueError(f"{filename}: existing file differs; kept untouched")
 
-    start = None
-    meta = None
-    received = 0
-    crc = 0
-    fd = None
-    temp = None
+    # Look up the begin separately. HA may persist closely spaced webhook
+    # automation events out of order if an older installation is not queued.
+    begin = None
+    for row in messages():
+        if (row.get("transfer_id") == tx
+                and row.get("record_type") == "captains_log_begin"):
+            if begin is not None or not valid_manifest(row) or not same_manifest(row, completion):
+                raise ValueError("conflicting or invalid begin record")
+            begin = row
+    if begin is None:
+        raise ValueError("missing begin event")
+    meta = decode_metadata(begin.get("metadata_b64"), filename)
+
+    fd, temp = tempfile.mkstemp(prefix=".capt_data_", dir=str(DEST))
+    seen = set()
+    complete_seen = False
     try:
-        for row in messages():
-            if row.get("transfer_id") != tx:
-                continue
-            kind = row.get("record_type")
-            if kind not in KINDS:
-                continue
-            if kind == "captains_log_begin":
-                if start is not None or not valid_manifest(row) or not same_manifest(row, completion):
-                    raise ValueError("conflicting or malformed begin record")
-                meta = decode_metadata(row.get("metadata_b64"), filename)
-                start = row
-                fd, temp = tempfile.mkstemp(prefix=".capt_data_", dir=str(DEST))
-                continue
-            if start is None:
-                raise ValueError("missing begin event")
-            if kind == "captains_log_chunk":
-                if row.get("file") != filename or type(row.get("index")) is not int:
-                    raise ValueError("invalid chunk metadata")
-                if row["index"] != received or received >= completion["chunks"]:
-                    raise ValueError("missing, repeated, or out-of-order chunk")
-                value = row.get("data")
-                if not isinstance(value, str) or len(value) > 5472:
-                    raise ValueError("invalid chunk Base64 size")
-                try:
-                    binary = base64.b64decode(value, validate=True)
-                except binascii.Error as error:
-                    raise ValueError("invalid Base64 chunk") from error
-                expected = min(CHUNK, size - received * CHUNK)
-                if len(binary) != expected:
-                    raise ValueError("incorrect chunk length")
-                with os.fdopen(os.dup(fd), "ab") as out:
+        with os.fdopen(fd, "wb") as out:
+            for row in messages():
+                if row.get("transfer_id") != tx:
+                    continue
+                kind = row.get("record_type")
+                if kind == "captains_log_complete":
+                    if not same_manifest(row, completion):
+                        raise ValueError("completion does not match begin")
+                    complete_seen = True
+                elif kind == "captains_log_chunk":
+                    if row.get("file") != filename or type(row.get("index")) is not int:
+                        raise ValueError("invalid chunk metadata")
+                    index = row["index"]
+                    if index < 0 or index >= total or index in seen:
+                        raise ValueError("out-of-range or duplicate chunk")
+                    value = row.get("data")
+                    if not isinstance(value, str) or len(value) > 5472:
+                        raise ValueError("invalid Base64 chunk size")
+                    try:
+                        binary = base64.b64decode(value, validate=True)
+                    except binascii.Error as error:
+                        raise ValueError("invalid Base64 chunk") from error
+                    expected = min(CHUNK, size - index * CHUNK)
+                    if len(binary) != expected:
+                        raise ValueError("incorrect chunk length")
+                    out.seek(index * CHUNK)
                     out.write(binary)
-                crc = zlib.crc32(binary, crc)
-                received += 1
-            elif kind == "captains_log_complete":
-                if not same_manifest(row, completion):
-                    raise ValueError("completion manifest mismatch")
-                break
-        if start is None or received != completion["chunks"]:
+                    seen.add(index)
+            out.flush()
+            os.fsync(out.fileno())
+
+        if not complete_seen or len(seen) != total:
             raise ValueError("incomplete Captain's Log transfer")
-        if f"{crc:08x}" != completion["crc32"]:
-            raise ValueError("Captain's Log CRC32 mismatch")
-        if fd is None or temp is None:
-            raise ValueError("temporary file was not created")
-        os.close(fd)
-        fd = None
         staged = Path(temp)
-        if staged.stat().st_size != size or not valid_header(staged, size):
-            raise ValueError("Captain's Log binary header mismatch")
-        # Never silently overwrite an existing recording.
+        if (staged.stat().st_size != size or
+                file_crc(staged) != completion["crc32"] or
+                not valid_header(staged, size)):
+            raise ValueError("binary size, CRC32, or header mismatch")
         if target.exists():
             raise ValueError("destination appeared during transfer")
         os.replace(temp, target)
@@ -204,11 +201,8 @@ def restore(completion):
             atomic_write(DEST / filename.replace(".adp", ".json"), meta)
         return "restored"
     finally:
-        if fd is not None:
-            os.close(fd)
         if temp is not None and os.path.exists(temp):
             os.unlink(temp)
-
 
 def run():
     if not ARCHIVE.is_file():
