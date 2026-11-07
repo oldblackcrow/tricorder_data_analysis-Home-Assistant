@@ -28,6 +28,14 @@ AUDIO_META_DIR = os.environ.get(
     "TRICORDER_AUDIO_METADATA_DIR", "/config/tricorder/recordings"
 )
 
+CAPTAINS_SOURCE_DIR = os.environ.get(
+    "TRICORDER_CAPTAINS_DIR", "/config/tricorder/captains"
+)
+CAPTAINS_MEDIA_DIR = os.environ.get(
+    "TRICORDER_CAPTAINS_MEDIA_DIR", "/media/tricorder_captains"
+)
+CAPTAINS_NAME = re.compile(r"captain_[0-9]{8}\\.adp\\Z")
+
 
 SCAN_TYPES = {
     "atmosphere_scan": "tricorder_atmosphere",
@@ -140,6 +148,81 @@ def result_payload(series, count):
         "count": count,
         "results": results,
     }
+
+
+def captain_log_catalog():
+    """Up to 60 newest private WAVs, including logs outside a mission."""
+    import struct
+
+    source = CAPTAINS_SOURCE_DIR
+    media = CAPTAINS_MEDIA_DIR
+    columns = [
+        "time", "file", "wav_file", "duration_s", "mission_code",
+        "mission_name", "mission_file", "media_id",
+    ]
+    values = []
+    try:
+        names = os.listdir(source)
+    except OSError:
+        names = []
+
+    for name in names:
+        if not CAPTAINS_NAME.fullmatch(name):
+            continue
+        wav_name = name[:-4] + ".wav"
+        if not os.path.isfile(os.path.join(media, wav_name)):
+            continue
+
+        try:
+            with open(os.path.join(source, name), "rb") as stream:
+                header = stream.read(32)
+            fields = struct.unpack("<8sHHIIHHII", header)
+            magic, version, length, rate, epoch, per_block, packet_size, count, duration = fields
+            if (magic != b"TRCAP01\x00" or version != 1 or length != 32
+                    or rate != 8000 or per_block != 160 or packet_size != 88
+                    or count < 1):
+                continue
+        except (OSError, ValueError, struct.error):
+            continue
+
+        metadata = {}
+        try:
+            with open(os.path.join(source, name[:-4] + ".json"), encoding="utf-8") as stream:
+                metadata = json.load(stream)
+            if (not isinstance(metadata, dict)
+                    or metadata.get("record_type") != "captains_log"
+                    or metadata.get("file") != name):
+                metadata = {}
+        except (OSError, ValueError, UnicodeError):
+            pass
+
+        started = metadata.get("started_unix", epoch)
+        if type(started) is not int or started < 1700000000:
+            time = ""
+        else:
+            try:
+                time = datetime.fromtimestamp(started).isoformat(timespec="seconds")
+            except (OverflowError, ValueError, OSError):
+                time = ""
+
+        duration_ms = metadata.get("duration_ms", duration)
+        if type(duration_ms) is not int or duration_ms < 0:
+            duration_ms = duration
+        values.append([
+            time, name, wav_name, round(duration_ms / 1000, 1),
+            str(metadata.get("mission_code", "") or ""),
+            str(metadata.get("mission_name", "") or ""),
+            str(metadata.get("mission_file", "") or ""),
+            "media-source://media_source/local/tricorder_captains/" + wav_name,
+        ])
+
+    values.sort(key=lambda record: (record[0], record[1]), reverse=True)
+    values = values[:60]
+    return result_payload([{
+        "name": "tricorder_captains_logs",
+        "columns": columns,
+        "values": values,
+    }], len(values))
 
 
 def mission_catalog(records):
@@ -1037,6 +1120,10 @@ def main():
         if len(sys.argv) > 2
         else ""
     )
+
+    if mode == "captains":
+        print(json.dumps(captain_log_catalog(), separators=(",", ":"), ensure_ascii=False))
+        return
 
     records, error = load_records(mode, mission_id)
 
