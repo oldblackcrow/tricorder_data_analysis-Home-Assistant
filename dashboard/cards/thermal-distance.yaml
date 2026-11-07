@@ -354,7 +354,7 @@ content: |
       {% set time_idx = image_gallery.columns.index('time') if 'time' in image_gallery.columns else none %}
       <div style="padding:9px 5px 5px;border-top:1px solid #262626;margin-top:8px">
         <div style="color:#8296ff;text-align:center;font-size:12px;font-weight:800;letter-spacing:1px;margin-bottom:8px">THERMAL IMAGES · {{ image_gallery.rows | length }} SAVED</div>
-        <div style="display:flex;overflow-x:auto;gap:10px;scroll-snap-type:x mandatory;padding-bottom:4px">
+        <div style="display:flex;overflow-x:auto;gap:10px;justify-content:{{ 'center' if image_gallery.rows | length == 1 else 'flex-start' }};scroll-snap-type:x mandatory;padding-bottom:4px">
           {% for item in image_gallery.rows | reverse %}
             <a href="{{ item[img_idx] }}" target="_blank" rel="noopener noreferrer" style="display:block;flex:0 0 76%;max-width:320px;scroll-snap-align:start;color:#b6c9ea;text-decoration:none">
               <img src="{{ item[img_idx] }}" loading="lazy" alt="Thermal scan image" style="width:100%;height:auto;display:block;border-radius:8px;border:1px solid #333">
