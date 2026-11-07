@@ -8,6 +8,9 @@ homeassistant:
   packages: !include_dir_named packages
 
 shell_command:
+  # Restore Rev100 audio-scan WAVs into HA's authenticated Media Browser.
+  tricorder_receive_audio_recording: >-
+    python3 /config/tricorder/audio_recording_receiver.py
   # Reassemble Rev098 Captain's Log .adp files from private JSONL webhook events.
   tricorder_receive_captain_log: >-
     python3 /config/tricorder/captain_log_receiver.py
