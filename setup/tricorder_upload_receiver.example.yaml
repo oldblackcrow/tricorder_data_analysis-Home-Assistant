@@ -3,6 +3,9 @@
 - id: tricorder_upload_receiver_example
   alias: Tricorder Upload Receiver
   description: Receives local JSON uploads from Tricorder.
+  # Keep asynchronous webhook writes ordered; Rev098 sends many audio chunks.
+  mode: queued
+  max: 64
   triggers:
   - trigger: webhook
     webhook_id: REPLACE_WITH_PRIVATE_RANDOM_WEBHOOK_ID
