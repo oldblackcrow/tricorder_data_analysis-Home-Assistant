@@ -34,7 +34,7 @@ CAPTAINS_SOURCE_DIR = os.environ.get(
 CAPTAINS_MEDIA_DIR = os.environ.get(
     "TRICORDER_CAPTAINS_MEDIA_DIR", "/media/tricorder_captains"
 )
-CAPTAINS_NAME = re.compile(r"captain_[0-9]{8}\\.adp\\Z")
+CAPTAINS_NAME = re.compile(r"captain_[0-9]{8}\.adp\Z")
 
 
 SCAN_TYPES = {
