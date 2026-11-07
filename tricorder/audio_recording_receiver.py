@@ -28,9 +28,9 @@ DEST = Path(os.environ.get(
 METADATA = Path(os.environ.get(
     "TRICORDER_AUDIO_METADATA_DIR", "/config/tricorder/recordings"
 ))
-FILENAME = re.compile(r"audio_[0-9]{8}\\.wav\\Z")
-TX = re.compile(r"[0-9a-f]{16}\\Z")
-CRC = re.compile(r"[0-9a-f]{8}\\Z")
+FILENAME = re.compile(r"audio_[0-9]{8}\.wav\Z")
+TX = re.compile(r"[0-9a-f]{16}\Z")
+CRC = re.compile(r"[0-9a-f]{8}\Z")
 CHUNK = 4096
 MAX_SIZE = 1024 * 1024
 MAX_META = 4096
