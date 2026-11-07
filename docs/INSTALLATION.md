@@ -134,6 +134,84 @@ private JSONL archive by roughly one third, plus per-chunk JSON overhead.
 Back up and protect this archive, and periodically monitor HA storage.
 No live webhook IDs or personal recorded audio belong in the public repo.
 
+## MaTouch Rev100: Thermal gallery and audio WAV access in Home Assistant
+
+These additions leave the working Rev099 radiation series and Rev098 Captain's Log
+uplink untouched. **This section is not installed merely because GitHub was
+updated.** Back up the live dashboard and existing private YAML before merging.
+
+### Thermal images (no firmware change needed)
+
+- Rev078+ already uploads the raw 32×24 grid; the installed
+  `thermal_snapshot_render.py` creates individual PNGs in
+  `/config/www/tricorder_thermal/`.
+- Update your existing `/config/tricorder/tricorder_archive_reader.py` from
+  [tricorder/tricorder_archive_reader.py](../tricorder/tricorder_archive_reader.py).
+  Its `tricorder_thermal_images` series lists only actually rendered PNGs for
+  the selected mission.
+- Update the Thermal/Distance dashboard card from
+  [dashboard/cards/thermal-distance.yaml](../dashboard/cards/thermal-distance.yaml)
+  or the full [dashboard/tricorder-dashboard.yaml](../dashboard/tricorder-dashboard.yaml).
+  Tap **THERMAL IMAGES** for the selected mission's gallery. An image is linked
+  to a `thermal_snapshot` record by its generated scan filename.
+- If a mission has no rendered image, check the original renderer setup above
+  and check that the image exists at its generated `/local` URL.
+  **Privacy:** `/local` files can be fetched without HA login.
+
+### Audio scan WAVs (Rev100 firmware + HA receiver)
+
+These are **timed Audio scan WAVs** (`audio_XXXXXXXX.wav`, 8 kHz, mono, 16-bit),
+not the separately compressed Captain's Logs (`.adp`). Rev099 saves the WAVs
+on the MaTouch under `/recordings` but does not uplink them. Rev100 adds a fifth
+Subspace Uplink group, which sends each intact WAV, its original JSON metadata,
+a 4096-byte Base64 chunk series and CRC32 checksum through the existing private
+webhook. The MaTouch never deletes the source recording after upload.
+
+1. Copy [tricorder/audio_recording_receiver.py](../tricorder/audio_recording_receiver.py)
+   to `/config/tricorder/audio_recording_receiver.py` on Home Assistant.
+2. **Merge**, don't replace, the
+   `shell_command.tricorder_receive_audio_recording` entry from
+   [setup/configuration-snippets.yaml](../setup/configuration-snippets.yaml) into
+   the live `configuration.yaml` under its *existing* `shell_command:` section.
+3. **Merge**, don't replace, the `audio_recording_complete` `if/then` action
+   from [setup/tricorder_upload_receiver.example.yaml](../setup/tricorder_upload_receiver.example.yaml)
+   into your **existing private** Tricorder Upload Receiver automation after
+   its original `notify.file` action. Keep its private webhook ID, all other
+   actions, and `mode: queued` with `max: 500`. Never publish the live
+   automation or replace it with the simplified example.
+4. Back up and update `/config/tricorder/tricorder_archive_reader.py` as above.
+   Update the Audio card from [dashboard/cards/audio.yaml](../dashboard/cards/audio.yaml)
+   or the whole dashboard file. Its **RECORDINGS** popup lists playable WAVs
+   in the selected mission. A WAV without a mission tag still appears in
+   **Media > My media > tricorder_audio** but not a mission popup.
+5. Check HA configuration and restart HA so the new `shell_command` is
+   loaded. Home Assistant OS provides `/media` automatically; on Container,
+   mount a persistent `/media` directory. The receiver creates
+   `/media/tricorder_audio/audio_XXXXXXXX.wav` for **authenticated** HA Media
+   Browser access, and keeps the original private metadata under
+   `/config/tricorder/recordings`. It does not copy audio to public `www`.
+6. Compile/flash MaTouch
+   [Rev100](https://github.com/oldblackcrow/TR-460/blob/matouch-geiger-014/firmware/matouch/TR460_MaTouch_Settings_100.txt).
+   No CLUE firmware change. Start a mission, save a timed Audio scan, connect
+   Wi-Fi and run **SUBSPACE UPLINK**. Check for **WAV** in the Uplink count,
+   confirm the transferred WAV in **Media > My media > tricorder_audio**, then
+   select that mission and open **AUDIO > RECORDINGS**.
+7. If the MaTouch says transfer complete but no WAV appears in HA, inspect
+   the receiver's command/log and the private `tricorder_uploads.jsonl` for
+   `audio_recording_complete`. HTTP success means queued receipt, **not**
+   confirmation of reconstructed WAV on HA disk. For complete archived
+   transfers, run the receiver again directly instead of retransmitting.
+   If the chunks were never stored, remove only that WAV's exact acceptance
+   marker from the MaTouch before retransmitting, after diagnosing the cause.
+
+**Storage:** Each WAV is 160–480 KB; Base64 enlarges the existing private
+JSONL upload log. Keep the original log and `/media` backed up. The receiver
+rejects mismatched WAV headers/CRC and will not overwrite a different WAV.
+
+**Verification status:** GitHub files were source-reviewed, but Rev100
+compilation, HA receiver end-to-end transfer and actual dashboard playback
+must be confirmed on the user's hardware. Rev099 remains available unchanged.
+
 ## Scope caveats
 
 - `setup/tricorder_upload_receiver.example.yaml` deliberately drops **12 retired InfluxDB-writing actions**; it still writes to `notify.file` and updates helpers. The deprecated `packages/tricorder_influxdb.yaml` is not shipped.
