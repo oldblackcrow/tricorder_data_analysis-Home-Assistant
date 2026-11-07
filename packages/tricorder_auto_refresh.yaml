@@ -25,7 +25,7 @@ automation:
             - sensor.tricorder_mission_events
             - sensor.tricorder_mission_scans
             - sensor.tricorder_comparison_mission_scans
-            - sensor.tricorder_captains_logs
+            - sensor.tricorder_captain_s_logs
       - action: persistent_notification.create
         data:
           title: "TR-460 Subspace Uplink"
