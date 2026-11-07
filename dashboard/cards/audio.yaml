@@ -550,8 +550,33 @@ content: |
         {% for recording in recordings.rows | reverse %}
           <div style="max-width:350px;margin:0 auto 11px;text-align:center">
             <div style="font-size:11px;color:#aeb9d3;margin-bottom:5px">{{ recording[name_idx] if name_idx is not none else 'SAVED AUDIO' }}</div>
-            <audio controls preload="none" src="{{ recording[url_idx] }}" style="display:block;width:100%"></audio>
-            <a href="{{ recording[url_idx] }}" target="_blank" rel="noopener noreferrer" style="display:block;color:#8ebfff;font-size:10px;padding-top:5px">OPEN / SAVE WAV</a>
+            <button type="button" data-media-id="media-source://media_source/local/tricorder_audio/{{ recording[name_idx] }}"
+              style="background:#22c55e;border:0;border-radius:12px;color:#000;font-weight:800;padding:6px 16px;margin-bottom:7px;cursor:pointer"
+              onclick='
+                const button = this;
+                const hass = button.closest("html-template-card")?._hass;
+                const audio = button.parentElement.querySelector("audio");
+                const link = button.parentElement.querySelector("a.wav-save");
+                if (!hass || !audio) { button.textContent = "PLAYER UNAVAILABLE"; return; }
+                button.disabled = true;
+                button.textContent = "LOADING...";
+                hass.callWS({type:"media_source/resolve_media",media_content_id:button.dataset.mediaId})
+                  .then(media => {
+                    audio.src = media.url;
+                    audio.load();
+                    audio.play().catch(error => console.warn("TR-460 WAV playback:",error));
+                    link.href = media.url;
+                    link.style.display = "block";
+                    button.textContent = "RELOAD / PLAY WAV";
+                  })
+                  .catch(error => {
+                    button.textContent = "RETRY PLAY WAV";
+                    console.error("TR-460 media access:",error);
+                  })
+                  .finally(() => { button.disabled = false; });
+              '>PLAY WAV</button>
+            <audio controls preload="none" style="display:block;width:100%"></audio>
+            <a class="wav-save" target="_blank" rel="noopener noreferrer" style="display:none;color:#8ebfff;font-size:10px;padding-top:5px">OPEN / SAVE WAV</a>
           </div>
         {% endfor %}
       {% else %}
