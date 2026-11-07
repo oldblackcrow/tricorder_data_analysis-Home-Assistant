@@ -1,0 +1,97 @@
+# Standalone Home Assistant Captain's Log card.
+# Lists all restored logs, including logs recorded outside any mission.
+# Audio remains in HA Media Browser; playback URLs are resolved when clicked.
+type: custom:html-template-card
+ignore_line_breaks: true
+entities:
+  - sensor.tricorder_captains_logs
+content: |
+  {% set result = state_attr('sensor.tricorder_captains_logs','results') or [] %}
+  {% set logs = namespace(columns=[], rows=[]) %}
+  {% if result and result[0].get('series') %}
+    {% for series in result[0]['series'] %}
+      {% if series.get('name') == 'tricorder_captains_logs' %}
+        {% set logs.columns = series.get('columns',[]) %}
+        {% set logs.rows = series.get('values',[]) %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  <style>
+    .cap-card{background:#000;border-radius:38px;padding:10px 18px;color:#fff;font-family:"Antonio","Arial Narrow",sans-serif;overflow:hidden}
+    .cap-top{height:7px;background:#8296ff;margin:-5px -18px 10px}
+    .cap-title{text-align:center;font-size:18px;font-weight:800;letter-spacing:1px;margin-bottom:9px}
+    .cap-count{text-align:center;color:#9cacff;font-size:12px;letter-spacing:1px;margin-bottom:11px}
+    .cap-entry{border-top:1px solid #333;padding:12px 0 8px;text-align:center}
+    .cap-file{font-size:13px;font-weight:800;color:#fff;letter-spacing:.4px}
+    .cap-meta{font-size:11px;color:#b4bccc;margin:4px 0 8px;overflow-wrap:anywhere}
+    .cap-play{background:#22c55e;border:none;border-radius:13px;color:#000;padding:7px 17px;font-weight:800;cursor:pointer}
+    .cap-play:disabled{opacity:.6;cursor:wait}
+    .cap-player{width:100%;max-width:360px;margin:8px auto 0;display:block}
+    .cap-download{color:#8ebfff;font-size:11px;text-decoration:none;display:none;margin-top:6px}
+    .cap-bottom{height:7px;background:#8e87b6;margin:12px -18px -5px}
+  </style>
+  <div class="cap-card">
+    <div class="cap-top"></div>
+    <div class="cap-title">CAPTAIN'S LOG</div>
+    <div class="cap-count">{{ logs.rows | length }} SAVED RECORDING{{ '' if logs.rows | length == 1 else 'S' }}</div>
+    {% if logs.rows and 'media_id' in logs.columns %}
+      {% set media_ix = logs.columns.index('media_id') %}
+      {% set file_ix = logs.columns.index('file') %}
+      {% set time_ix = logs.columns.index('time') %}
+      {% set duration_ix = logs.columns.index('duration_s') %}
+      {% set code_ix = logs.columns.index('mission_code') %}
+      {% set mission_ix = logs.columns.index('mission_name') %}
+      {% for entry in logs.rows %}
+        <div class="cap-entry">
+          <div class="cap-file">{{ entry[file_ix] }}</div>
+          <div class="cap-meta">
+            {{ entry[time_ix] if entry[time_ix] else 'TIME UNKNOWN' }}
+            · {{ entry[duration_ix] }} SEC
+            · {{ entry[code_ix] if entry[code_ix] else 'STANDALONE' }}
+            {% if entry[mission_ix] %} · {{ entry[mission_ix] }}{% endif %}
+          </div>
+          <button type="button" class="cap-play" data-media-id="{{ entry[media_ix] }}"
+            onclick='
+              const button = this;
+              const hass = button.closest("html-template-card")?._hass;
+              const audio = button.parentElement.querySelector("audio");
+              const link = button.parentElement.querySelector("a.cap-download");
+              if (!hass || !audio) { button.textContent = "PLAYER UNAVAILABLE"; return; }
+              button.disabled = true;
+              button.textContent = "LOADING...";
+              hass.callWS({type:"media_source/resolve_media",media_content_id:button.dataset.mediaId})
+                .then(media => {
+                  audio.src = media.url;
+                  audio.load();
+                  audio.play().catch(error => console.warn("Captain log playback:",error));
+                  link.href = media.url;
+                  link.style.display = "block";
+                  button.textContent = "RELOAD / PLAY";
+                })
+                .catch(error => {
+                  button.textContent = "RETRY PLAY";
+                  console.error("Captain log media access:",error);
+                })
+                .finally(() => { button.disabled = false; });
+            '>PLAY LOG</button>
+          <audio class="cap-player" controls preload="none"></audio>
+          <a class="cap-download" target="_blank" rel="noopener noreferrer">OPEN / SAVE WAV</a>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div style="text-align:center;color:#888;padding:18px 4px;font-size:12px">
+        No Captain's Logs have been converted yet.
+      </div>
+    {% endif %}
+    <div class="cap-bottom"></div>
+  </div>
+card_mod:
+  style: |
+    ha-card {
+      background:#29364c !important;
+      padding:2px !important;
+      border:none !important;
+      border-radius:40px !important;
+      box-shadow:none !important;
+      overflow:hidden !important;
+    }
