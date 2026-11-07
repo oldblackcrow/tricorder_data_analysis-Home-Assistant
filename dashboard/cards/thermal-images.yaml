@@ -1,0 +1,42 @@
+# Standalone card; add beside the existing Thermal / Distance card.
+# Reads the selected mission's already-rendered images. Does NOT replace
+# or modify the existing sensor display.
+type: custom:html-template-card
+ignore_line_breaks: true
+entities:
+  - sensor.tricorder_mission_scans
+content: |
+  {% set result = state_attr('sensor.tricorder_mission_scans','results') or [] %}
+  {% set photos = namespace(columns=[], rows=[]) %}
+  {% if result and result[0].get('series') %}
+    {% for series in result[0]['series'] %}
+      {% if series.get('name') == 'tricorder_thermal_images' %}
+        {% set photos.columns = series.get('columns',[]) %}
+        {% set photos.rows = series.get('values',[]) %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  <div style="background:#000;color:#fff;font-family:Antonio,Arial Narrow,sans-serif;border-radius:26px;padding:15px">
+    <div style="text-align:center;font-size:20px;font-weight:800;margin:0 0 10px">THERMAL IMAGES</div>
+    {% if photos.rows and 'image_url' in photos.columns %}
+      {% set url_col = photos.columns.index('image_url') %}
+      {% set date_col = photos.columns.index('time') if 'time' in photos.columns else none %}
+      {% for entry in photos.rows | reverse %}
+        <a href="{{ entry[url_col] }}" target="_blank" rel="noopener noreferrer" style="display:block;color:#aaccff;text-decoration:none;margin-bottom:14px">
+          <img src="{{ entry[url_col] }}" alt="Thermal scan image" loading="lazy" style="display:block;width:100%;height:auto;border-radius:9px">
+          <div style="font-size:12px;margin-top:5px">{{ entry[date_col] if date_col is not none else 'VIEW IMAGE' }}</div>
+        </a>
+      {% endfor %}
+    {% else %}
+      <div style="text-align:center;color:#999;padding:14px">No rendered thermal images for this mission.</div>
+    {% endif %}
+  </div>
+card_mod:
+  style: |
+    ha-card {
+      background:#29364c !important;
+      padding:2px !important;
+      border:0 !important;
+      border-radius:30px !important;
+      overflow:hidden !important;
+    }
