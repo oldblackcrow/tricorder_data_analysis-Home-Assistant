@@ -5,14 +5,12 @@ entities:
 - input_number.tric_humidity
 - input_number.tric_pressure
 - input_number.tric_altitude
-- input_number.tric_lux
-- input_number.tric_proximity
 - input_number.tric_eco2
 - input_number.tric_tvoc
 - input_datetime.tric_atmosphere_time
 - sensor.tricorder_mission_scans
 content: |
-  {% set temp = states('input_number.tric_temperature') | float(0) %} {% set humidity = states('input_number.tric_humidity') | float(0) %} {% set pressure = states('input_number.tric_pressure') | float(0) %} {% set altitude = states('input_number.tric_altitude') | float(0) %} {% set lux = states('input_number.tric_lux') | float(0) %} {% set proximity = states('input_number.tric_proximity') | float(0) %} {% set eco2 = states('input_number.tric_eco2') | float(0) %} {% set tvoc = states('input_number.tric_tvoc') | float(0) %}
+  {% set temp = states('input_number.tric_temperature') | float(0) %} {% set humidity = states('input_number.tric_humidity') | float(0) %} {% set pressure = states('input_number.tric_pressure') | float(0) %} {% set altitude = states('input_number.tric_altitude') | float(0) %} {% set eco2 = states('input_number.tric_eco2') | float(0) %} {% set tvoc = states('input_number.tric_tvoc') | float(0) %}
   {% set raw_time = states('input_datetime.tric_atmosphere_time') %} {% set scan_time = as_datetime(raw_time) %} {% if scan_time %}
     {% set recorded = scan_time.strftime('%m/%d/%Y %H:%M:%S') %}
     {% set scan_end_ts = as_timestamp(scan_time) %}
@@ -111,12 +109,6 @@ content: |
     {% endif %}
     {% if 'altitude_m' in atmosphere.columns %}
       {% set altitude = last_row[atmosphere.columns.index('altitude_m')] | float(altitude) %}
-    {% endif %}
-    {% if 'lux' in atmosphere.columns %}
-      {% set lux = last_row[atmosphere.columns.index('lux')] | float(lux) %}
-    {% endif %}
-    {% if 'proximity' in atmosphere.columns %}
-      {% set proximity = last_row[atmosphere.columns.index('proximity')] | float(proximity) %}
     {% endif %}
     {% if 'eco2_ppm' in atmosphere.columns and last_row[atmosphere.columns.index('eco2_ppm')] is not none %}
       {% set eco2 = last_row[atmosphere.columns.index('eco2_ppm')] | float(eco2) %}
@@ -282,10 +274,6 @@ content: |
     'pressure_hpa','PRESSURE','hPa','#f59e0b',1) %}
   {% set altitude_popup = sensor_popup(
     'altitude_m','ALTITUDE','m','#8e87b6',1) %}
-  {% set lux_popup = sensor_popup(
-    'lux','LIGHT','lx','#facc15',1) %}
-  {% set proximity_popup = sensor_popup(
-    'proximity','PROXIMITY','','#3b82f6',0) %}
   {% set eco2_popup = sensor_popup(
     'eco2_ppm','eCO₂','ppm','#22c55e',0) %}
   {% set tvoc_popup = sensor_popup(
@@ -472,37 +460,6 @@ content: |
       </div>
       <div class="env-cap rightcap" style="background:#8e87b6;">
         <ha-icon icon="mdi:image-filter-hdr"></ha-icon>
-      </div>
-    </div>
-
-    <div
-      class="env-row left"
-      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"LIGHT SCAN",content:{{ lux_popup | to_json }},initial_style:"normal"}}}}))'
-    >
-      <div class="env-cap leftcap" style="background:#facc15;">
-        <ha-icon icon="mdi:brightness-5"></ha-icon>
-      </div>
-      <div class="env-value small">
-        {{ '%.1f' | format(lux) }}
-        <span class="unit">{{ state_attr('input_number.tric_lux','unit_of_measurement') or '' }}</span>
-      </div>
-      <div class="env-label round-right" style="background:#facc15;">
-        LIGHT
-      </div>
-    </div>
-
-    <div
-      class="env-row right"
-      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"PROXIMITY SCAN",content:{{ proximity_popup | to_json }},initial_style:"normal"}}}}))'
-    >
-      <div class="env-label round-left" style="background:#3b82f6;">
-        PROXIMITY
-      </div>
-      <div class="env-value">
-        {{ proximity | round(0) | int }}
-      </div>
-      <div class="env-cap rightcap" style="background:#3b82f6;">
-        <ha-icon icon="mdi:radar"></ha-icon>
       </div>
     </div>
 
