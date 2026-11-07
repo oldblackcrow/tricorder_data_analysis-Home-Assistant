@@ -1,0 +1,28 @@
+# Automatic post-uplink refresh for the TR-460 mission archive.
+#
+# The existing Tricorder Upload Receiver automation must fire
+#   - event: tricorder_archive_received
+# at the END of its actions, after the archive has been written
+# and any thermal/audio reconstruction shell commands have run.
+#
+# Each incoming record restarts an 8-second quiet-period timer.
+# The four archive sensors refresh ONCE after the last record,
+# rather than expensively re-reading the archive for each WAV chunk.
+
+automation:
+  - id: tricorder_archive_refresh_after_uplink
+    alias: Tricorder Archive - Refresh After Uplink
+    description: Refresh selected mission, comparison and catalog after uploads settle.
+    triggers:
+      - trigger: event
+        event_type: tricorder_archive_received
+    actions:
+      - delay: "00:00:08"
+      - action: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.tricorder_mission_catalog
+            - sensor.tricorder_mission_events
+            - sensor.tricorder_mission_scans
+            - sensor.tricorder_comparison_mission_scans
+    mode: restart
