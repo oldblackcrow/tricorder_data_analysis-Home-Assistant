@@ -25,4 +25,9 @@ automation:
             - sensor.tricorder_mission_events
             - sensor.tricorder_mission_scans
             - sensor.tricorder_comparison_mission_scans
+      - action: persistent_notification.create
+        data:
+          title: "TR-460 Subspace Uplink"
+          message: "New tricorder data has arrived in Home Assistant. Mission archive sensors have been refreshed."
+          notification_id: tricorder_uplink_received
     mode: restart
