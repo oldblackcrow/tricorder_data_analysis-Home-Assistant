@@ -16,6 +16,13 @@
       entity_id: notify.file
     data:
       message: '{{ trigger.json | to_json }}'
+  # Rev098: reassemble accepted Captain's Log chunks into private .adp files.
+  # The File notifier above MUST finish writing before this command runs.
+  - if:
+    - condition: template
+      value_template: "{{ trigger.json.get('record_type', '') == 'captains_log_complete' }}"
+    then:
+    - action: shell_command.tricorder_receive_captain_log
   # Render one color thermal PNG only after the raw grid is saved.
   # Requires shell_command.tricorder_render_thermal from configuration-snippets.yaml.
   - if:
