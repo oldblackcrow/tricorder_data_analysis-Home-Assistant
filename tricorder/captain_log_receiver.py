@@ -226,8 +226,12 @@ def run():
             except (OSError, ValueError, UnicodeError) as error:
                 stats["failed"] += 1
                 print(f"Captain's Log {item['file']} failed: {error}", file=sys.stderr)
-        print(json.dumps(stats))
-        return 1 if stats["failed"] else 0
+        # Also materialize browser-playable WAVs in HA's protected Media Browser.
+        # Old uploads are converted on the next receiver run as well.
+        from captain_log_wav import convert_all
+        wav_stats = convert_all()
+        print(json.dumps({"transfers": stats, "wav": wav_stats}))
+        return 1 if stats["failed"] or wav_stats["failed"] else 0
 
 
 if __name__ == "__main__":
