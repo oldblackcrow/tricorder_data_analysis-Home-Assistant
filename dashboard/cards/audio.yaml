@@ -380,34 +380,14 @@ content: |
 
   {% set peak_popup = sensor_popup(
     'peak_db','relative_db','PEAK LEVEL','dB','#f59e0b',1) %}
-    {# Only completed WAV transfers materialize in the per-mission media list. #}
-    {% set recordings = namespace(columns=[], rows=[]) %}
-    {% for wav_series in scan_series %}
-      {% if wav_series.get('name','') == 'tricorder_audio_files' %}
-        {% set recordings.columns = wav_series.get('columns',[]) %}
-        {% set recordings.rows = wav_series.get('values',[]) %}
-      {% endif %}
-    {% endfor %}
-    {% set recordings_popup %}
-    <div style="background:#050505;color:#f4f4f4;padding:13px;font-family:Antonio,Arial Narrow,sans-serif">
-      {% if recordings.rows and 'media_url' in recordings.columns %}
-        <div style="font-size:12px;color:#aaa;margin-bottom:10px">WAV RECORDINGS - SELECTED MISSION</div>
-        {% set file_idx = recordings.columns.index('file') if 'file' in recordings.columns else none %}
-        {% set media_idx = recordings.columns.index('media_url') %}
-        {% for wav in recordings.rows | reverse %}
-          <div style="padding:10px;background:#141414;margin-bottom:10px;border-radius:9px">
-            <div style="font-size:13px;color:#b5c5ff;margin-bottom:5px">{{ wav[file_idx] if file_idx is not none else 'AUDIO RECORDING' }}</div>
-            <audio controls preload="none" src="{{ wav[media_idx] }}" style="width:100%"></audio>
-            <a href="{{ wav[media_idx] }}" target="_blank" rel="noopener noreferrer" style="display:block;color:#8ebfff;font-size:11px;margin-top:5px">OPEN / SAVE WAV</a>
-          </div>
-        {% endfor %}
-      {% else %}
-        <div style="padding:14px;color:#aaa;text-align:center">No uploaded WAV files for this mission.</div>
-        <div style="color:#777;font-size:12px;text-align:center">Rev100 WAV upload and HA receiver must be installed.</div>
-      {% endif %}
-    </div>
-    {% endset %}
-
+  {# Media list for the selected mission. #}
+  {% set recordings = namespace(columns=[], rows=[]) %}
+  {% for item in scan_series %}
+    {% if item.get('name') == 'tricorder_audio_files' %}
+      {% set recordings.columns = item.get('columns', []) %}
+      {% set recordings.rows = item.get('values', []) %}
+    {% endif %}
+  {% endfor %}
   <style>
     .env-card {
       background:#000;
@@ -562,13 +542,23 @@ content: |
       </div>
     </div>
 
-    <div class="env-row left"
-      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"AUDIO RECORDINGS",content:{{ recordings_popup | to_json }},initial_style:"normal"}}}}))'>
-      <div class="env-cap leftcap" style="background:#22c55e"><ha-icon icon="mdi:music-box-multiple"></ha-icon></div>
-      <div class="env-value">{{ recordings.rows | length }}<span class="unit">WAV FILES</span></div>
-      <div class="env-label round-right" style="background:#22c55e">RECORDINGS</div>
+    <div style="margin:12px 0 6px;border-top:1px solid #262626;padding-top:9px">
+      <div style="text-align:center;color:#22c55e;font-size:12px;font-weight:800;letter-spacing:1px;margin-bottom:9px">AUDIO RECORDINGS</div>
+      {% if recordings.rows and 'media_url' in recordings.columns %}
+        {% set url_idx = recordings.columns.index('media_url') %}
+        {% set name_idx = recordings.columns.index('file') if 'file' in recordings.columns else none %}
+        {% for recording in recordings.rows | reverse %}
+          <div style="max-width:350px;margin:0 auto 11px;text-align:center">
+            <div style="font-size:11px;color:#aeb9d3;margin-bottom:5px">{{ recording[name_idx] if name_idx is not none else 'SAVED AUDIO' }}</div>
+            <audio controls preload="none" src="{{ recording[url_idx] }}" style="display:block;width:100%"></audio>
+            <a href="{{ recording[url_idx] }}" target="_blank" rel="noopener noreferrer" style="display:block;color:#8ebfff;font-size:10px;padding-top:5px">OPEN / SAVE WAV</a>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div style="text-align:center;color:#888;font-size:11px;padding:9px 0">No uploaded WAV files for this mission.</div>
+      {% endif %}
     </div>
-    
+
     <div class="env-bottomline"></div>
   </div>
 card_mod:
