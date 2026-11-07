@@ -3,9 +3,9 @@
 - id: tricorder_upload_receiver_example
   alias: Tricorder Upload Receiver
   description: Receives local JSON uploads from Tricorder.
-  # Keep asynchronous webhook writes ordered; Rev098 sends many audio chunks.
+  # Keep webhook writes ordered; Rev098/100 use chunked binary transfers.
   mode: queued
-  max: 64
+  max: 500
   triggers:
   - trigger: webhook
     webhook_id: REPLACE_WITH_PRIVATE_RANDOM_WEBHOOK_ID
@@ -19,6 +19,12 @@
       entity_id: notify.file
     data:
       message: '{{ trigger.json | to_json }}'
+  # Rev100: only reconstruct WAV after all audio chunks were stored in JSONL.
+  - if:
+    - condition: template
+      value_template: "{{ trigger.json.get('record_type', '') == 'audio_recording_complete' }}"
+    then:
+    - action: shell_command.tricorder_receive_audio_recording
   # Rev098: reassemble accepted Captain's Log chunks into private .adp files.
   # The File notifier above MUST finish writing before this command runs.
   - if:
