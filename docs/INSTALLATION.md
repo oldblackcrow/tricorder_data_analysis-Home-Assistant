@@ -75,6 +75,65 @@ reachable from untrusted networks. Keep the webhook ID and JSONL archive
 private. The media-transfer server is operator-enabled only and remains
 off on boot.
 
+## MaTouch Rev098: Captain's Log Subspace Uplink
+
+Rev098 adds **Captain's Log** binary transfers to the existing Subspace Uplink.
+The MaTouch transmits one JSON begin event, fixed 4096-byte Base64 chunks,
+and one complete event per immutable \`captain_XXXXXXXX.adp\`. Its optional
+original JSON metadata sidecar is carried in the begin event. The existing
+File notifier stores the webhook events in the **private** JSONL archive;
+the Python helper reconstructs a CRC32-checked .adp file and original .json
+sidecar in \`/config/tricorder/captains/\` (not in the public \`/config/www\`
+directory). A second transfer of identical file content is harmless.
+
+**One-time HA setup (required before sending Captain's Logs):**
+
+1. Copy [\`tricorder/captain_log_receiver.py\`](../tricorder/captain_log_receiver.py)
+   to \`/config/tricorder/captain_log_receiver.py\`. Python 3 stdlib only.
+2. Add the \`shell_command.tricorder_receive_captain_log\` entry shown in
+   [\`setup/configuration-snippets.yaml\`](../setup/configuration-snippets.yaml)
+   to your **existing** Home Assistant \`configuration.yaml\`. Do not replace
+   its other shell commands.
+3. In your **existing** Tricorder Upload Receiver automation, enable
+   \`mode: queued\` and \`max: 64\`. After its existing \`notify.file\` action,
+   add the conditional \`captains_log_complete\` action shown in
+   [\`setup/tricorder_upload_receiver.example.yaml\`](../setup/tricorder_upload_receiver.example.yaml).
+   Keep the live webhook ID, other sensor actions, and thermal renderer.
+   Queued mode prevents overlapping HTTP requests from dropping recording
+   chunks while the previous action is writing.
+4. Check HA configuration, then reload/restart the affected automation and
+   \`shell_command\` configuration (normally a Home Assistant restart for
+   shell commands). Back up the private JSONL file before testing.
+5. Connect the tricorder to Wi-Fi manually, open **SUBSPACE UPLINK** and
+   press **TRANSMIT**. The firmware scans the existing unsent missions,
+   scans, thermal snapshots, **and now Captain's Logs**. Check that
+   \`/config/tricorder/captains/captain_XXXXXXXX.adp\` is created; an optional
+   matching \`.json\` should appear. Confirm the reconstructed file's
+   size and playback with an independent decoder if desired.
+
+**Acceptance vs. confirmation:** The MaTouch's success message and sound
+mean all HTTP events were accepted with 2xx responses. Home Assistant does
+**not** send an application-level disk checksum acknowledgment back to
+the device. Check the HA file yourself before treating it as a verified
+backup. The Python script validates the 32-byte TRCAP01 header, expected
+packet count, exact size, all chunks, and CRC32 before atomically installing
+the file. It rejects conflicting preexisting files rather than overwriting
+them. The original .adp/.json files on MaTouch are **never erased** by
+uplink. Existing MaTouch \`/sent/c_captain_XXXXXXXX.adp.ok\` markers prevent
+automatic retransmission after HTTP acceptance, not after HA reconstruction.
+
+To recover after a failed HA-side assembly, first ensure the HA receiver
+is fixed, then run \`python3 /config/tricorder/captain_log_receiver.py\` to
+reprocess any complete transfers already present in the JSONL archive.
+If source chunks were never persisted in HA, the MaTouch's corresponding
+\`/sent/\` acceptance marker will need removal before retransmission.
+Avoid deleting the Captain's Log recording itself.
+
+**Privacy/storage:** Base64 expands the size of each recording in the
+private JSONL archive by roughly one third, plus per-chunk JSON overhead.
+Back up and protect this archive, and periodically monitor HA storage.
+No live webhook IDs or personal recorded audio belong in the public repo.
+
 ## Scope caveats
 
 - `setup/tricorder_upload_receiver.example.yaml` deliberately drops **12 retired InfluxDB-writing actions**; it still writes to `notify.file` and updates helpers. The deprecated `packages/tricorder_influxdb.yaml` is not shipped.
