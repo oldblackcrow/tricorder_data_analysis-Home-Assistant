@@ -4,9 +4,9 @@
 type: custom:html-template-card
 ignore_line_breaks: true
 entities:
-  - sensor.tricorder_captains_logs
+  - sensor.tricorder_captain_s_logs
 content: |
-  {% set result = state_attr('sensor.tricorder_captains_logs','results') or [] %}
+  {% set result = state_attr('sensor.tricorder_captain_s_logs','results') or [] %}
   {% set logs = namespace(columns=[], rows=[]) %}
   {% if result and result[0].get('series') %}
     {% for series in result[0]['series'] %}
