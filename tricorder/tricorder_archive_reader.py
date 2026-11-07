@@ -16,7 +16,7 @@ ARCHIVE_STATE_PATH = "/config/tricorder/archive_state.json"
 
 
 # Only generated, rendered PNGs are exposed in mission image galleries.
-THERMAL_ARCHIVE_NAME = re.compile(r"thermal_distance_[0-9]{8}\\.jsonl\\Z")
+THERMAL_ARCHIVE_NAME = re.compile(r"thermal_distance_[0-9]{8}\.jsonl\Z")
 THERMAL_RENDER_DIR = os.environ.get(
     "TRICORDER_THERMAL_IMAGE_DIR", "/config/www/tricorder_thermal"
 )
