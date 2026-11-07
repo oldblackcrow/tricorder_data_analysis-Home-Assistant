@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta
 
@@ -12,6 +13,13 @@ ARCHIVE_PATH = os.environ.get(
 )
 
 ARCHIVE_STATE_PATH = "/config/tricorder/archive_state.json"
+
+
+# Only generated, rendered PNGs are exposed in mission image galleries.
+THERMAL_ARCHIVE_NAME = re.compile(r"thermal_distance_[0-9]{8}\\.jsonl\\Z")
+THERMAL_RENDER_DIR = os.environ.get(
+    "TRICORDER_THERMAL_IMAGE_DIR", "/config/www/tricorder_thermal"
+)
 
 
 SCAN_TYPES = {
@@ -845,6 +853,25 @@ def mission_scans(records, mission_id):
             )
             if location is not None:
                 grouped.setdefault("tricorder_location", []).append(location)
+            continue
+
+        # Mission-linked image gallery. The original 32x24 thermal grid
+        # stays private in JSONL; show only files actually rendered to PNG.
+        if r.get("record_type") == "thermal_snapshot":
+            archive_name = r.get("archive_file", "")
+            if (isinstance(archive_name, str)
+                    and THERMAL_ARCHIVE_NAME.fullmatch(archive_name)):
+                png_name = archive_name[:-6] + ".png"
+                if os.path.isfile(os.path.join(THERMAL_RENDER_DIR, png_name)):
+                    image = {
+                        "time": r.get("time"),
+                        "archive_file": archive_name,
+                        "image_url": "/local/tricorder_thermal/" + png_name,
+                    }
+                    image.update(common_tags(r, mission_id))
+                    grouped.setdefault(
+                        "tricorder_thermal_images", []
+                    ).append(image)
             continue
 
         measurement, row = normalize_scan(
