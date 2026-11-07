@@ -292,6 +292,33 @@ content: |
     {% endif %}
   {% endmacro %}
   {% set center_popup = popup('thermal',thermal.columns,thermal_rows,'center_f','THERMAL CENTER','°F','#f59e0b',1) %} {% set min_popup = popup('thermal',thermal.columns,thermal_rows,'min_f','THERMAL MIN','°F','#3b82f6',1) %} {% set max_popup = popup('thermal',thermal.columns,thermal_rows,'max_f','THERMAL MAX','°F','#ef4444',1) %} {% set distance_popup = popup('distance',distance.columns,distance_rows,'distance_m','LIDAR DISTANCE','m','#22c55e',2) %}
+{# Image links are emitted only for snapshots already rendered on HA. #}
+{% set images = namespace(columns=[], rows=[]) %}
+{% for scan_series_item in scan_series %}
+  {% if scan_series_item.get('name','') == 'tricorder_thermal_images' %}
+    {% set images.columns = scan_series_item.get('columns',[]) %}
+    {% set images.rows = scan_series_item.get('values',[]) %}
+  {% endif %}
+{% endfor %}
+{% set thermal_gallery %}
+  <div style="background:#050505;color:#f4f4f4;padding:12px;font-family:Antonio,Arial Narrow,sans-serif">
+  {% if images.rows and 'image_url' in images.columns %}
+    <div style="margin-bottom:10px;color:#aaa;font-size:12px">THERMAL SNAPSHOTS - SELECTED MISSION</div>
+    {% set image_index = images.columns.index('image_url') %}
+    {% set time_index = images.columns.index('time') if 'time' in images.columns else none %}
+    {% for image_row in images.rows | reverse %}
+      {% set image_path = image_row[image_index] %}
+      <a href="{{ image_path }}" target="_blank" rel="noopener noreferrer" style="display:block;text-decoration:none;color:#a9d7ff;margin:0 0 15px">
+        <img src="{{ image_path }}" loading="lazy" alt="Thermal scan" style="display:block;width:100%;max-width:640px;image-rendering:pixelated;border:1px solid #353535;border-radius:8px">
+        <span style="display:block;margin-top:5px;font-size:12px">{{ image_row[time_index] if time_index is not none else 'VIEW IMAGE' }}</span>
+      </a>
+    {% endfor %}
+  {% else %}
+    <div style="padding:18px;text-align:center;color:#999">No rendered thermal images for the selected mission.</div>
+    <div style="text-align:center;color:#777;font-size:12px">Check that the HA thermal snapshot renderer is installed.</div>
+  {% endif %}
+  </div>
+{% endset %}
   <style>
     .td-card{background:#000;border:0;border-radius:38px;padding:10px 18px;overflow:hidden;font-family:"Antonio","Arial Narrow",sans-serif;box-sizing:border-box}
     .td-topline{height:7px;background:#f59e0b;margin:-5px -18px 10px}.td-bottomline{height:7px;background:#22c55e;margin:10px -18px -5px}
@@ -339,6 +366,13 @@ content: |
         {% endif %}
       </div>
       <div class="td-cap rightcap" style="background:#22c55e"><ha-icon icon="mdi:arrow-expand-horizontal"></ha-icon></div>
+    </div>
+
+    <div class="td-row left"
+      onclick='this.dispatchEvent(new CustomEvent("ll-custom",{bubbles:true,composed:true,detail:{browser_mod:{service:"browser_mod.popup",data:{title:"THERMAL IMAGES",content:{{ thermal_gallery | to_json }},initial_style:"normal"}}}}))'>
+      <div class="td-cap leftcap" style="background:#8296ff"><ha-icon icon="mdi:image-multiple"></ha-icon></div>
+      <div class="td-value">{{ images.rows | length }}<span class="unit">FILES</span></div>
+      <div class="td-label round-right" style="background:#8296ff">THERMAL IMAGES</div>
     </div>
 
     <div class="td-bottomline"></div>
