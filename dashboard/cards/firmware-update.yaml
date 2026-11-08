@@ -1,0 +1,84 @@
+# Standalone LCARS-style TR-460 firmware update launcher.
+# Opens the on-device browser uploader; firmware never passes through Home Assistant.
+# Requires the existing custom:html-template-card + card_mod integrations.
+# Replace 'tricorder.local' with the IP shown on FILE XFER if mDNS doesn't resolve.
+type: custom:html-template-card
+ignore_line_breaks: true
+content: |
+  <style>
+    .tr460-ota-card {
+      background: #000;
+      border-radius: 38px;
+      padding: 12px 18px 13px;
+      color: #fff;
+      font-family: "Antonio", "Arial Narrow", Arial, sans-serif;
+      overflow: hidden;
+      text-align: center;
+    }
+    .tr460-ota-top {
+      height: 7px;
+      background: #8296ff;
+      margin: -7px -18px 10px;
+    }
+    .tr460-ota-title {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      margin-bottom: 8px;
+    }
+    .tr460-ota-note {
+      color: #aebccc;
+      font-size: 12px;
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+    .tr460-ota-open {
+      display: inline-block;
+      border: none;
+      border-radius: 14px;
+      background: #22c55e;
+      color: #000 !important;
+      padding: 10px 23px;
+      text-decoration: none !important;
+      font: 800 13px "Antonio", "Arial Narrow", Arial, sans-serif;
+      letter-spacing: 1px;
+    }
+    .tr460-ota-open:hover { filter: brightness(1.15); }
+    .tr460-ota-help {
+      margin-top: 11px;
+      font-size: 11px;
+      color: #9cacff;
+    }
+    .tr460-ota-bottom {
+      height: 7px;
+      background: #8e87b6;
+      margin: 12px -18px -8px;
+    }
+  </style>
+  <div class="tr460-ota-card">
+    <div class="tr460-ota-top"></div>
+    <div class="tr460-ota-title">TR-460 FIRMWARE UPDATE</div>
+    <div class="tr460-ota-note">
+      On MaTouch: connect WI-FI, open ARCHIVE / FILE XFER,
+      select START SERVER, then ARM OTA.
+    </div>
+    <a class="tr460-ota-open"
+       href="http://tricorder.local/firmware"
+       target="_blank" rel="noopener noreferrer">OPEN UPDATER</a>
+    <div class="tr460-ota-help">
+      Opens the tricorder's local updater page in a new tab.
+      Select a compiled MaTouch application .bin file there.
+      No firmware is stored in Home Assistant.
+    </div>
+    <div class="tr460-ota-bottom"></div>
+  </div>
+card_mod:
+  style: |
+    ha-card {
+      background:#29364c !important;
+      padding:2px !important;
+      border:none !important;
+      border-radius:40px !important;
+      box-shadow:none !important;
+      overflow:hidden !important;
+    }
