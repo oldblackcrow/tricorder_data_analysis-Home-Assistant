@@ -131,6 +131,9 @@ def restore(completion):
     tx, filename = completion["transfer_id"], completion["file"]
     size, total = completion["bytes"], completion["chunks"]
     target = DEST / filename
+    # A user-deleted log must not be reconstructed from old JSONL messages.
+    if (DEST / filename.replace(".adp", ".deleted")).is_file():
+        return "deleted"
     if target.exists():
         if (target.stat().st_size == size
                 and file_crc(target) == completion["crc32"]
@@ -216,7 +219,7 @@ def run():
         for item in messages():
             if item.get("record_type") == "captains_log_complete" and valid_manifest(item):
                 completed[item["transfer_id"]] = item
-        stats = {"restored": 0, "already-present": 0, "failed": 0}
+        stats = {"restored": 0, "already-present": 0, "deleted": 0, "failed": 0}
         for item in completed.values():
             try:
                 outcome = restore(item)
