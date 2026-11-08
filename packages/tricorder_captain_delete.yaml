@@ -1,0 +1,36 @@
+# Per-recording deletion for the existing TR-460 Captain's Log card.
+# Install at /config/packages/tricorder_captain_delete.yaml.
+# Only Home Assistant copies are removed; this does not erase MaTouch FFat.
+# The Python tool writes a tombstone to suppress reimport from old JSONL.
+
+shell_command:
+  tricorder_delete_captain_log: >-
+    python3 /config/tricorder/captain_log_delete.py {{ log_number | int(-1) }}
+
+script:
+  tricorder_delete_captain_log:
+    alias: Tricorder - Delete One Captain's Log
+    description: Deletes one Captain's Log from HA after card confirmation.
+    mode: queued
+    max: 10
+    fields:
+      log_number:
+        name: Captain's Log number
+        description: The numeric suffix of captain_00000001.adp.
+        required: true
+        example: 1
+    sequence:
+      - action: shell_command.tricorder_delete_captain_log
+        data:
+          log_number: "{{ log_number | int(-1) }}"
+        response_variable: captain_delete_response
+      - if:
+          - condition: template
+            value_template: "{{ captain_delete_response['returncode'] != 0 }}"
+        then:
+          - stop: >-
+              Captain's Log deletion failed. Check the script trace and HA logs.
+            error: true
+      - action: homeassistant.update_entity
+        data:
+          entity_id: sensor.tricorder_captain_s_logs
