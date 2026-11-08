@@ -26,6 +26,8 @@ content: |
     .cap-meta{font-size:11px;color:#b4bccc;margin:4px 0 8px;overflow-wrap:anywhere}
     .cap-play{background:#22c55e;border:none;border-radius:13px;color:#000;padding:7px 17px;font-weight:800;cursor:pointer}
     .cap-play:disabled{opacity:.6;cursor:wait}
+    .cap-delete{background:#ef4444;border:0;border-radius:13px;color:#000;padding:7px 14px;font-weight:800;cursor:pointer;margin-left:8px}
+    .cap-delete:disabled{opacity:.6;cursor:wait}
     .cap-player{width:100%;max-width:360px;margin:8px auto 0;display:block}
     .cap-download{color:#8ebfff;font-size:11px;text-decoration:none;display:none;margin-top:6px}
     .cap-bottom{height:7px;background:#8e87b6;margin:12px -18px -5px}
@@ -74,6 +76,27 @@ content: |
                 })
                 .finally(() => { button.disabled = false; });
             '>PLAY LOG</button>
+          <button type="button" class="cap-delete" data-log-number="{{ entry[file_ix][8:16] | int(0) }}"
+            onclick='
+              const button = this;
+              const hass = button.closest("html-template-card")?._hass;
+              const number = Number(button.dataset.logNumber);
+              if (!Number.isInteger(number) || number < 1) {
+                button.textContent = "INVALID LOG"; return;
+              }
+              if (!window.confirm("PERMANENTLY DELETE CAPTAIN\u0027S LOG " + String(number).padStart(8,"0") +
+                " FROM HOME ASSISTANT?\n\nThe original recording on the MaTouch will NOT be erased.")) return;
+              if (!hass) { button.textContent = "HA UNAVAILABLE"; return; }
+              button.disabled = true;
+              button.textContent = "DELETING...";
+              hass.callService("script","tricorder_delete_captain_log",{log_number:number})
+                .then(() => { button.textContent = "DELETED"; })
+                .catch(error => {
+                  button.textContent = "RETRY DELETE";
+                  console.error("Captain log deletion:",error);
+                })
+                .finally(() => { button.disabled = false; });
+            '>DELETE</button>
           <audio class="cap-player" controls preload="none"></audio>
           <a class="cap-download" target="_blank" rel="noopener noreferrer">OPEN / SAVE WAV</a>
         </div>
