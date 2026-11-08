@@ -5,6 +5,7 @@ Keep a tombstone alongside the original archive so the existing webhook
 receiver does not reconstruct a deliberately deleted file from historical
 JSONL upload records. Original JSONL remains untouched.
 """
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -32,18 +33,20 @@ def delete(log_number):
     ):
         raise FileNotFoundError(f"Captain's Log {name} not found")
 
-    # Mark *before* removing anything so queued receiver jobs cannot restore
-    # this file if HA restarts or the delete is interrupted.
-    if not tombstone.exists():
-        with tombstone.open("x", encoding="ascii") as handle:
-            handle.write("Deleted from Home Assistant; keep this marker to block historical reimport.\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-    removed = []
-    for path in (original, metadata, wav):
-        if path.exists():
-            path.unlink()
-            removed.append(path.name)
+    # Receiver holds the same lock while restoring and converting uploads.
+    # Serialize deletion with it to prevent a reupload/restore race.
+    with (SOURCE / ".receiver.lock").open("a+b") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        if not tombstone.exists():
+            with tombstone.open("x", encoding="ascii") as handle:
+                handle.write("Deleted from Home Assistant; keep this marker to block historical reimport.\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+        removed = []
+        for path in (original, metadata, wav):
+            if path.exists():
+                path.unlink()
+                removed.append(path.name)
     return {"log": name, "removed": removed, "reimport_blocked": True}
 
 
