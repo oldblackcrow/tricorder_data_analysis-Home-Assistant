@@ -426,7 +426,7 @@ content: |
         {% set name = row[name_i] | replace('_', ' ') %}
         {% set status = row[status_i] %}
 
-        {% set dt = as_datetime(raw_time) %}
+        {% set dt = as_datetime(raw_time, none) %}
 
         {% if dt %}
           {% set local_dt = as_local(dt) %}
@@ -499,7 +499,7 @@ content: |
           {% set amid = row[aid_i] %}
           {% set aname = row[aname_i] | replace('_', ' ') %}
 
-          {% set adt = as_datetime(araw_time) %}
+          {% set adt = as_datetime(araw_time, none) %}
 
           {% if adt %}
             {% set alocal_dt = as_local(adt) %}
@@ -601,7 +601,7 @@ content: |
       {% set final_elapsed = last[elapsed_i] | float(0) %}
       {% set final_status = last[status_i] %}
 
-      {% set start_dt = as_datetime(start_raw) %}
+      {% set start_dt = as_datetime(start_raw, none) %}
 
       {% if start_dt %}
         {% set start_local = as_local(start_dt) %}
@@ -715,7 +715,7 @@ content: |
         {% set event = row[event_i] %}
         {% set event_status = row[status_i] %}
 
-        {% set dt = as_datetime(event_time) %}
+        {% set dt = as_datetime(event_time, none) %}
 
         {% if dt %}
           {% set local_dt = as_local(dt) %}
