@@ -183,7 +183,7 @@ content: |
       <div class="ap">
         <style>
           .ap{background:#000;color:#fff;padding:16px;font-family:Antonio,Arial Narrow,sans-serif;box-sizing:border-box}
-          .ap *{box-sizing:border-box}.ar{position:absolute;opacity:0;pointer-events:none}.ac{cursor:pointer}.ac:hover{filter:brightness(1.12)}
+          .ap .dual-c{display:block;font-size:10px;color:#aaa;line-height:1.3}.ap *{box-sizing:border-box}.ar{position:absolute;opacity:0;pointer-events:none}.ac{cursor:pointer}.ac:hover{filter:brightness(1.12)}
           .bar{height:7px;background:{{ color }};border-radius:8px;margin-bottom:13px}.ttl{text-align:center;font-size:22px;font-weight:900;letter-spacing:1px}
           .sub{text-align:center;color:{{ color }};font-size:11px;font-weight:800;letter-spacing:1px;margin:3px 0 14px}
           .sum{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}.tile{background:#111;border-radius:11px;padding:8px;text-align:center}
@@ -212,9 +212,9 @@ content: |
         <div class="sub">{{ duration }} SECOND SCAN</div>
 
         <div class="sum">
-          <label class="tile ac" for="{{ field }}-p{{ picks.mini }}"><div class="k">MIN</div><div class="v">{{ minval | round(decimals) }} <span class="u">{{ unit }}</span></div></label>
-          <div class="tile"><div class="k">AVG</div><div class="v">{{ avgval | round(decimals) }} <span class="u">{{ unit }}</span></div></div>
-          <label class="tile ac" for="{{ field }}-p{{ picks.maxi }}"><div class="k">MAX</div><div class="v">{{ maxval | round(decimals) }} <span class="u">{{ unit }}</span></div></label>
+          <label class="tile ac" for="{{ field }}-p{{ picks.mini }}"><div class="k">MIN</div><div class="v">{{ minval | round(decimals) }} <span class="u">{{ unit }}</span>{% if field == 'temperature_f' %}<span class="dual-c">{{ ((minval - 32) * 5 / 9) | round(decimals) }} °C</span>{% endif %}</div></label>
+          <div class="tile"><div class="k">AVG</div><div class="v">{{ avgval | round(decimals) }} <span class="u">{{ unit }}</span>{% if field == 'temperature_f' %}<span class="dual-c">{{ ((avgval - 32) * 5 / 9) | round(decimals) }} °C</span>{% endif %}</div></div>
+          <label class="tile ac" for="{{ field }}-p{{ picks.maxi }}"><div class="k">MAX</div><div class="v">{{ maxval | round(decimals) }} <span class="u">{{ unit }}</span>{% if field == 'temperature_f' %}<span class="dual-c">{{ ((maxval - 32) * 5 / 9) | round(decimals) }} °C</span>{% endif %}</div></label>
           <div class="tile"><div class="k">SAMPLES</div><div class="v">{{ count }}</div></div>
         </div>
 
@@ -223,7 +223,7 @@ content: |
           {% for c in graph.coords %}
             <div class="sel s{{ c['index'] }}">
               <div class="sh"><b style="color:{{ color }}">SAMPLE {{ c['index'] }}</b><span>{{ c['p']['time'] }} · +{{ c['offset'] }} s</span></div>
-              <div class="sv">{{ c['p']['value'] | round(detail_decimals) }} <span class="u">{{ unit }}</span></div>
+              <div class="sv">{{ c['p']['value'] | round(detail_decimals) }} <span class="u">{{ unit }}</span>{% if field == 'temperature_f' %}<span class="dual-c">{{ ((c['p']['value'] - 32) * 5 / 9) | round(detail_decimals) }} °C</span>{% endif %}</div>
               <div class="k" style="text-align:center;margin-top:6px">MISSION {% if c['p']['mission'] is not none %}{{ c['p']['mission'] | round(1) }} s{% else %}--{% endif %}</div>
             </div>
           {% endfor %}
@@ -251,11 +251,11 @@ content: |
         <div class="rows">
           <div class="rh">SAMPLE DETAIL</div>
           {% for c in graph.coords %}
-            <label class="row ac r{{ c['index'] }}" for="{{ field }}-p{{ c['index'] }}"><span style="color:#aaa">{{ c['p']['time'] }}</span><span>{{ label }} {{ c['p']['value'] | round(detail_decimals) }} {{ unit }}</span></label>
+            <label class="row ac r{{ c['index'] }}" for="{{ field }}-p{{ c['index'] }}"><span style="color:#aaa">{{ c['p']['time'] }}</span><span>{{ label }} {{ c['p']['value'] | round(detail_decimals) }} {{ unit }}{% if field == 'temperature_f' %} / {{ ((c['p']['value'] - 32) * 5 / 9) | round(detail_decimals) }} °C{% endif %}</span></label>
           {% endfor %}
         </div>
 
-        <label class="last ac" for="{{ field }}-p{{ count }}">LAST {{ ns.values[-1] | round(detail_decimals) }} {{ unit }}</label>
+        <label class="last ac" for="{{ field }}-p{{ count }}">LAST {{ ns.values[-1] | round(detail_decimals) }} {{ unit }}{% if field == 'temperature_f' %} / {{ ((ns.values[-1] - 32) * 5 / 9) | round(detail_decimals) }} °C{% endif %}</label>
         <div class="bar" style="margin-top:13px;margin-bottom:0"></div>
       </div>
 
@@ -406,9 +406,9 @@ content: |
       <div class="env-cap leftcap" style="background:{{ temp_color }};">
         <ha-icon icon="mdi:thermometer"></ha-icon>
       </div>
-      <div class="env-value">
-        {{ '%.1f' | format(temp) }}
-        <span class="unit">{{ state_attr('input_number.tric_temperature','unit_of_measurement') or '' }}</span>
+      <div class="env-value" style="flex-direction:column;font-size:12px;line-height:13px">
+        <span>{{ '%.1f' | format(temp) }}<span class="unit">°F</span></span>
+        <span>{{ '%.1f' | format((temp - 32) * 5 / 9) }}<span class="unit">°C</span></span>
       </div>
       <div class="env-label round-right" style="background:{{ temp_color }};">
         TEMPERATURE
