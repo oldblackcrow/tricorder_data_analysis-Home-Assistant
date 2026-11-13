@@ -1,0 +1,106 @@
+# Paste this whole file into the EXISTING Analyze Tricorder Thermal Image
+# script's YAML editor, replacing its old hardcoded-image version.
+# Requires the helper and shell_command from the same repository.
+# Expose this script to Assist only after testing it locally.
+alias: Analyze Tricorder Thermal Image
+description: >-
+  Use when asked to analyze the TR-460 tricorder's thermal images or
+  compare thermal scans. Defaults to ALL images in the mission currently
+  selected on the Tricorder dashboard. Reads original calibrated-grid
+  values for the numerical mean, minimum, and maximum. For comparisons,
+  provide compare_to as a mission code, mission name, or "all".
+fields:
+  compare_to:
+    name: Compare with
+    description: >-
+      Optional: comparison mission code/name or "all" for every mission.
+      Omit to analyze only the dashboard-selected mission.
+    required: false
+    selector:
+      text:
+mode: single
+sequence:
+  - variables:
+      selected_mission: "{{ states('input_text.tric_archive_mission_id') }}"
+      comparison_request: "{{ compare_to | default('', true) }}"
+  - action: shell_command.tricorder_prepare_thermal_ai
+    data:
+      mission_id: "{{ selected_mission }}"
+      compare_to: "{{ comparison_request }}"
+    response_variable: prepared
+  - if:
+      - condition: template
+        value_template: "{{ prepared.returncode != 0 }}"
+    then:
+      - variables:
+          analysis_result:
+            status: error
+            report: "Unable to prepare the thermal archive. {{ prepared.stderr }}"
+      - stop: Thermal archive preparation failed
+        response_variable: analysis_result
+  - variables:
+      report: "{{ prepared.stdout | from_json }}"
+  - if:
+      - condition: template
+        value_template: "{{ not report.ok }}"
+    then:
+      - variables:
+          analysis_result:
+            status: error
+            report: "{{ report.error }}"
+      - stop: Thermal scan unavailable
+        response_variable: analysis_result
+  - if:
+      - condition: template
+        value_template: "{{ report.attachments | count == 0 }}"
+    then:
+      - variables:
+          analysis_result:
+            status: partial
+            report: >-
+              I found {{ report.selected.image_count }} thermal scans in
+              mission {{ report.selected.mission_code }}. The mean of all
+              valid temperature pixels is {{ report.selected.mean_c }} degrees
+              Celsius, with a minimum of {{ report.selected.minimum_c }} and
+              a maximum of {{ report.selected.maximum_c }} degrees. No
+              rendered PNG images were available for visual analysis.
+      - stop: Thermal measurements available but no rendered images
+        response_variable: analysis_result
+  - action: ai_task.generate_data
+    data:
+      task_name: TR-460 Selected Mission Thermal Interpretation
+      instructions: >-
+        You are Computer, the concise TNG-style Home Assistant voice assistant.
+        Interpret the attached false-color TR-460 thermal images. These images
+        are rendered from 32 by 24 sensors, and the false-color palette is
+        normalized PER IMAGE: never compare colors as absolute temperatures.
+        The following raw-grid measurements are authoritative and were computed
+        from every valid archived thermal frame, including ones not attached.
+        Selected mission statistics: {{ report.selected | to_json }}.
+        Comparison mission statistics: {{ report.comparisons | to_json }}.
+        Attached images are in this exact order, with mission and timestamp:
+        {{ report.attachment_index | to_json }}.
+        First briefly describe each distinct visible thermal pattern in the
+        attached selected-mission images; then summarize changes across scans.
+        Report the selected mission's actual mean, minimum and maximum
+        temperatures in Celsius and Fahrenheit using the provided numbers.
+        Average the measurement values, not the image colors. Hot spots
+        must not be hidden just because the overall mean is lower.
+        If comparison statistics are supplied, compare mission measurements;
+        only compare visual appearances for comparison images actually attached.
+        If none are supplied, do not invent comparison results.
+        If {{ report.unattached_images }} images were not attached, disclose
+        that those images contributed numerical measurements only.
+        Never guess object identity, materials, diagnosis, or calibration.
+        Respond in plain spoken English, no markdown, 140 words or fewer.
+      attachments: "{{ report.attachments }}"
+    response_variable: interpreted
+  - variables:
+      analysis_result:
+        status: ok
+        report: "{{ interpreted.data }}"
+        selected_mission: "{{ report.selected.mission_code }}"
+        numeric_image_count: "{{ report.selected.image_count }}"
+        visually_examined_image_count: "{{ report.visible_images }}"
+  - stop: Thermal analysis complete
+    response_variable: analysis_result
