@@ -1,0 +1,8 @@
+# Merge ONLY this item under your existing shell_command: block in
+# /config/configuration.yaml. Do not duplicate shell_command: or replace
+# any existing Tricorder or household commands.
+shell_command:
+  tricorder_prepare_thermal_ai: >-
+    python3 /config/tricorder/tricorder_thermal_ai_prepare.py
+    "{{ mission_id | regex_replace('[^A-Za-z0-9_.-]', '') }}"
+    "{{ compare_to | regex_replace('[^A-Za-z0-9_. -]', '') }}"
