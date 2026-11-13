@@ -34,6 +34,9 @@ def snapshots():
     missions = {}
     with ARCHIVE.open(encoding="utf-8") as archive:
         for line in archive:
+            # Avoid parsing large unrelated base64 WAV-transfer records.
+            if '"thermal_snapshot"' not in line and '"mission_start"' not in line:
+                continue
             if not line.lstrip().startswith("{"):
                 continue
             try:
