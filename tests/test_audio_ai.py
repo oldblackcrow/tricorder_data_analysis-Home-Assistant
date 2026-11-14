@@ -86,12 +86,16 @@ def test_file_selection_and_cache_no_duplicate_api_billing(archive, monkeypatch)
     assert module.analyze("mission-C")["status"] == "no_audio"
 
 
-def test_request_is_real_wav_audio_text_only(archive, monkeypatch):
+def test_request_uses_audio_and_text_with_transcript(archive, monkeypatch):
     request_seen = {}
     class FakeResponse:
         def __enter__(self):
             return io.BytesIO(json.dumps({"choices": [
-                {"message": {"content": "Several sharp taps, possibly footsteps."}}
+                {"message": {
+                    "content": None,
+                    "audio": {"transcript": "Several sharp taps, possibly footsteps.",
+                              "data": "fake-generated-audio-not-used"}
+                }}
             ]}).encode("utf-8"))
         def __exit__(self, exc_type, exc, tb):
             return False
@@ -108,7 +112,8 @@ def test_request_is_real_wav_audio_text_only(archive, monkeypatch):
     assert "sharp taps" in description
     payload = request_seen["payload"]
     assert payload["model"] == "gpt-audio-1.5"
-    assert payload["modalities"] == ["text"]
+    assert payload["modalities"] == ["text", "audio"]
+    assert payload["audio"] == {"voice": "alloy", "format": "wav"}
     assert payload["store"] is False
     import base64
     assert payload["messages"][0]["role"] == "system"
@@ -230,3 +235,52 @@ def test_status_only_response_received_over_api_is_rejected(archive, monkeypatch
             module.validate_description(bad)
     assert module.validate_description("Only faint background hiss.") == (
         "Only faint background hiss.")
+
+
+def test_audio_transcript_preferred_over_status_content(archive, monkeypatch):
+    """Audio transcript is authoritative even if content has a JSON flag."""
+    def fake_urlopen(request, timeout=0):
+        class FakeResponse:
+            def __enter__(self):
+                return io.BytesIO(json.dumps({"choices": [{
+                    "message": {
+                        "content": '{"analyzable_audio": true}',
+                        "audio": {
+                            "transcript": "Low rustling with three soft taps.",
+                            "data": "base64-generated-audio-not-cached",
+                        },
+                    },
+                    "finish_reason": "stop",
+                }]}).encode())
+            def __exit__(self, exc_type, exc, tb):
+                return False
+        return FakeResponse()
+    monkeypatch.setattr(module.urllib.request, "urlopen", fake_urlopen)
+    sound, _ = module.read_wav(module.MEDIA_DIR / "audio_00000001.wav")
+    result = module.interpret(sound, "not-a-real-key")
+    assert result == "Low rustling with three soft taps."
+    analysis = module.analyze("mission-A")
+    assert analysis["analyzed"] == 2
+    assert all("base64-generated-audio" not in str(x)
+               for x in module.load_cache().values())
+
+
+def test_audio_text_fallback_without_transcript(archive, monkeypatch):
+    """Text output remains acceptable if transcript is not provided."""
+    def fake_urlopen(request, timeout=0):
+        class FakeResponse:
+            def __enter__(self):
+                return io.BytesIO(json.dumps({"choices": [{
+                    "message": {
+                        "content": "Faint chirping, possibly a bird.",
+                        "audio": {"data": "unused"},
+                    },
+                    "finish_reason": "stop",
+                }]}).encode())
+            def __exit__(self, exc_type, exc, tb):
+                return False
+        return FakeResponse()
+    monkeypatch.setattr(module.urllib.request, "urlopen", fake_urlopen)
+    sound, _ = module.read_wav(module.MEDIA_DIR / "audio_00000001.wav")
+    assert module.interpret(sound, "not-a-real-key") == (
+        "Faint chirping, possibly a bird.")
