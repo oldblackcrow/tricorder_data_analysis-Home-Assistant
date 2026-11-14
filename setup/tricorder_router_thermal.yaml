@@ -30,7 +30,8 @@ actions:
                 {{ thermal_reply.report | default('No thermal analysis was returned.', true) }}
           - set_conversation_response: |
               {{ thermal_reply.report | default('No thermal analysis was returned.', true) }}
-      # Preserve the existing diagnostic phrases and actions unchanged.
+      # General diagnostic now also includes thermal image interpretation.
+      # Audio analysis is not yet implemented: never infer sound identities.
       - conditions:
           - condition: template
             value_template: |
@@ -44,13 +45,59 @@ actions:
           - action: script.tr_460_science_diagnostic
             data: {}
             response_variable: science_reply
+          # Thermal is optional; an absent archive must not break diagnostics.
+          - action: script.analyze_tricorder_thermal_image
+            data: {}
+            response_variable: thermal_reply
+            continue_on_error: true
+          - variables:
+              science_summary: "{{ science_reply.response.speech.plain.speech }}"
+              thermal_summary: >-
+                {% if thermal_reply is defined and thermal_reply is mapping
+                      and (thermal_reply.status | default('error')) in ['ok', 'partial'] %}
+                  {{ thermal_reply.report | default('No thermal findings were returned.', true) }}
+                {% else %}
+                  Detailed thermal image interpretation is unavailable.
+                {% endif %}
+          # Summarize text returned by both existing scripts; do not reprocess
+          # raw audio, claim sound recognition, or speculate about identity.
+          - action: ai_task.generate_data
+            data:
+              task_name: TR-460 Concise Combined Diagnostic
+              instructions: >-
+                Turn the following general TR-460 measurements and separate
+                thermal image interpretation into ONE natural spoken report
+                of at most 100 words. Give the most useful overall findings
+                rather than reciting all numeric values; include at most two
+                important figures. Mention the thermal pattern and any shape
+                resemblance already supported by its image interpretation.
+                Phrase shape suggestions cautiously, e.g. "may resemble a
+                hand"; do not assert an object or organism was identified.
+                If images were unavailable, do not pretend they were seen.
+                Audio recognition/analysis has NOT been implemented: if
+                acoustic measurements are mentioned, describe only measured
+                activity, never a sound type or source. Preserve significant
+                anomalies and uncertainty; do not invent missing results.
+                Use plain spoken English, no markdown. General diagnostic:
+                {{ science_summary | to_json }}. Thermal image result:
+                {{ thermal_summary | to_json }}.
+            response_variable: combined_reply
+            continue_on_error: true
+          - variables:
+              spoken_report: >-
+                {% if combined_reply is defined and combined_reply is mapping
+                      and combined_reply.data is defined and combined_reply.data %}
+                  {{ combined_reply.data }}
+                {% else %}
+                  {{ science_summary }} {{ thermal_summary }}
+                {% endif %}
           - action: persistent_notification.create
             data:
               title: TR-460 Diagnostic
               message: |
-                {{ science_reply.response.speech.plain.speech }}
+                {{ spoken_report }}
           - set_conversation_response: |
-              {{ science_reply.response.speech.plain.speech }}
+              {{ spoken_report }}
     default:
       - action: script.tr_460_science_diagnostic
         data:
