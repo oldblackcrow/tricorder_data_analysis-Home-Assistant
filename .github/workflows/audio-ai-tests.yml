@@ -1,0 +1,27 @@
+name: TR-460 audio analysis regression tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tricorder/tricorder_audio_ai.py"
+      - "tests/test_audio_ai.py"
+      - ".github/workflows/audio-ai-tests.yml"
+  pull_request:
+    paths:
+      - "tricorder/tricorder_audio_ai.py"
+      - "tests/test_audio_ai.py"
+      - ".github/workflows/audio-ai-tests.yml"
+
+jobs:
+  audio-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: python -m pip install pytest PyYAML
+      - name: Verify WAV analysis and cache regression fixes
+        run: python -m pytest -q tests/test_audio_ai.py
