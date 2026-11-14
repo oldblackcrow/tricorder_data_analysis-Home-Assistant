@@ -224,7 +224,8 @@ def test_status_only_response_received_over_api_is_rejected(archive, monkeypatch
     with pytest.raises(ValueError, match="status data"):
         module.interpret(sound, "not-a-real-key")
     for bad in ('{"analyzable_audio": true}', "true", '{"other": 1}',
-                '["no", "description"]', "Audio is analyzable"):
+                '["no", "description"]', "Audio is analyzable",
+                "null", "0", '["silence"]'):
         with pytest.raises(ValueError):
             module.validate_description(bad)
     assert module.validate_description("Only faint background hiss.") == (
