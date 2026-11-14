@@ -1,0 +1,66 @@
+# Complete replacement YAML for the EXISTING "TR-460 Tricorder Router"
+# automation (edit that automation in YAML mode; do not create a second router).
+# The only behavior change is a thermal-first route to the existing analysis script.
+alias: TR-460 Tricorder Router
+description: Route any Assist request containing tricorder to Computer Science
+triggers:
+  - trigger: conversation
+    command:
+      - tricorder
+      - tricorder {after}
+      - '{before} tricorder'
+      - '{before} tricorder {after}'
+conditions: []
+actions:
+  - choose:
+      # Thermal-analysis requests must take priority over the generic report.
+      - conditions:
+          - condition: template
+            value_template: |
+              {% set s = trigger.sentence | lower %}
+              {{ 'thermal' in s }}
+        sequence:
+          - action: script.analyze_tricorder_thermal_image
+            data: {}
+            response_variable: thermal_reply
+          - action: persistent_notification.create
+            data:
+              title: TR-460 Thermal Analysis
+              message: |
+                {{ thermal_reply.report | default('No thermal analysis was returned.', true) }}
+          - set_conversation_response: |
+              {{ thermal_reply.report | default('No thermal analysis was returned.', true) }}
+      # Preserve the existing diagnostic phrases and actions unchanged.
+      - conditions:
+          - condition: template
+            value_template: |
+              {% set s = trigger.sentence | lower %} {{
+                'run a tricorder diagnostic' in s
+                or 'tricorder diagnostic' in s
+                or 'analyze the tricorder data' in s
+                or 'tricorder analysis' in s
+              }}
+        sequence:
+          - action: script.tr_460_science_diagnostic
+            data: {}
+            response_variable: science_reply
+          - action: persistent_notification.create
+            data:
+              title: TR-460 Diagnostic
+              message: |
+                {{ science_reply.response.speech.plain.speech }}
+          - set_conversation_response: |
+              {{ science_reply.response.speech.plain.speech }}
+    default:
+      - action: script.tr_460_science_diagnostic
+        data:
+          followup_question: '{{ trigger.sentence }}'
+        response_variable: science_reply
+      - action: persistent_notification.create
+        data:
+          title: TR-460 Science Follow-up
+          message: |
+            {{ science_reply.response.speech.plain.speech }}
+      - set_conversation_response: |
+          {{ science_reply.response.speech.plain.speech }}
+mode: single
