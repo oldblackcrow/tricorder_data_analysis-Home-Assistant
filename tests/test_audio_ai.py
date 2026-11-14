@@ -111,8 +111,11 @@ def test_request_is_real_wav_audio_text_only(archive, monkeypatch):
     assert payload["modalities"] == ["text"]
     assert payload["store"] is False
     import base64
+    assert payload["messages"][0]["role"] == "system"
+    assert "Do not output JSON" in payload["messages"][0]["content"]
+    assert payload["messages"][1]["role"] == "user"
     assert base64.b64decode(
-        payload["messages"][0]["content"][1]["input_audio"]["data"]) == sound
+        payload["messages"][1]["content"][1]["input_audio"]["data"]) == sound
     assert request_seen["timeout"] == module.API_TIMEOUT_S
 
 
@@ -135,3 +138,94 @@ def test_installer_yaml_is_parseable():
     for name in ("setup/tricorder_audio_ai_script.yaml",
                  "setup/tricorder_audio_ai_shell_command.yaml"):
         assert isinstance(yaml.safe_load((ROOT / name).read_text()), dict)
+
+
+def test_status_only_api_response_rejected_and_not_cached(archive, monkeypatch):
+    """Regression: {"analyzable_audio": true} must never count as analyzed."""
+    requests = []
+    def fake_interpret(data, api_key):
+        requests.append(True)
+        if len(requests) == 1:
+            return '{"analyzable_audio": true}'
+        return "A repeated mechanical tapping sound, possibly a loose fan."
+
+    monkeypatch.setattr(module, "interpret", fake_interpret)
+    rejected = module.analyze("mission-A")
+    assert rejected["status"] == "error"
+    assert rejected["analyzed"] == 0
+    assert rejected["newly_analyzed"] == 0
+    assert "status" in rejected["report"] or "structured" in rejected["report"]
+    assert not module.CACHE.exists()
+
+    retry = module.analyze("mission-A")
+    assert retry["status"] == "partial"
+    assert retry["analyzed"] == 2
+    assert retry["newly_analyzed"] == 2
+    assert len(requests) == 3
+    assert "mechanical tapping" in retry["report"]
+
+
+def test_invalid_legacy_cached_status_auto_evicted_only(archive, monkeypatch):
+    """Drop one legacy false-positive entry without deleting other cached results."""
+    data, _ = module.read_wav(module.MEDIA_DIR / "audio_00000001.wav")
+    legacy_key = module.cache_key(data, module.LEGACY_PROMPT_VERSION)
+    sentinel = "unrelated-valid-entry"
+    module.save_cache({
+        legacy_key: '{"analyzable_audio": true}',
+        sentinel: "A quiet background hum, possibly ventilation.",
+    })
+    calls = []
+    def fake_interpret(data, api_key):
+        calls.append(True)
+        return "A series of faint knocks with a steady background hiss."
+    monkeypatch.setattr(module, "interpret", fake_interpret)
+    output = module.analyze("mission-A")
+    assert output["status"] == "partial"
+    assert output["newly_analyzed"] == 2
+    assert len(calls) == 2
+    cache = module.load_cache()
+    assert legacy_key not in cache
+    assert cache[sentinel].startswith("A quiet background hum")
+    assert module.cache_key(data) in cache
+    assert "status" not in output["report"].lower()
+
+
+def test_valid_legacy_cached_description_migrates_without_api_call(
+        archive, monkeypatch):
+    data, _ = module.read_wav(module.MEDIA_DIR / "audio_00000001.wav")
+    legacy_key = module.cache_key(data, module.LEGACY_PROMPT_VERSION)
+    description = "Faint rustling with short periodic chirps, possibly a bird."
+    module.save_cache({legacy_key: description})
+    requests = []
+    def fake_interpret(data, api_key):
+        requests.append(True)
+        return "A low background rumble."
+    monkeypatch.setattr(module, "interpret", fake_interpret)
+    out = module.analyze("mission-A")
+    assert out["recordings"][0]["cached"] is True
+    assert out["recordings"][0]["description"] == description
+    assert out["newly_analyzed"] == 2
+    assert len(requests) == 2
+    assert module.load_cache()[module.cache_key(data)] == description
+
+
+def test_status_only_response_received_over_api_is_rejected(archive, monkeypatch):
+    class FakeResponse:
+        def __enter__(self):
+            return io.BytesIO(json.dumps({"choices": [{
+                "finish_reason": "stop",
+                "message": {"content": '{"analyzable_audio": true}'}
+            }]}).encode())
+        def __exit__(self, exc_type, exc, tb):
+            return False
+    monkeypatch.setattr(module.urllib.request, "urlopen",
+                        lambda request, timeout=0: FakeResponse())
+    sound, _ = module.read_wav(module.MEDIA_DIR / "audio_00000001.wav")
+    with pytest.raises(ValueError, match="status data"):
+        module.interpret(sound, "not-a-real-key")
+    for bad in ('{"analyzable_audio": true}', "true", '{"other": 1}',
+                '["no", "description"]', "Audio is analyzable"):
+        with pytest.raises(ValueError):
+            module.validate_description(bad)
+    assert module.validate_description("Only faint background hiss.") == (
+        "Only faint background hiss.")
