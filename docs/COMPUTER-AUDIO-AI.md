@@ -62,8 +62,11 @@ Official API: https://developers.openai.com/api/docs/guides/audio-chat-completio
   to complete a larger mission; cached descriptions carry forward.
 - API errors are reported, not cached. Account billing is through the
   separate OpenAI API (not the ChatGPT subscription).
-- Requests use store:false and TEXT-only output; the WAV is still uploaded
-  to OpenAI. Keep saved audio private.
+- Requests use store:false and both text and audio response modalities, as
+ described in the documented GPT-audio example. We extract the generated
+ audio.transcript as a sound description and discard generated audio bytes;
+ the generated audio may add API output charges. The original WAV is still
+ uploaded to OpenAI. Keep saved audio private.
 
 ## Known limitations
 
