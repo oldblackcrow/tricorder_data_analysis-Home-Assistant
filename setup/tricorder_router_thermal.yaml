@@ -1,6 +1,7 @@
 # Complete replacement YAML for the EXISTING "TR-460 Tricorder Router"
 # automation (edit that automation in YAML mode; do not create a second router).
-# The only behavior change is a thermal-first route to the existing analysis script.
+# Routes explicit thermal requests to the thermal script and combines general,
+# thermal, and recorded-WAV audio findings in a brief general diagnostic.
 alias: TR-460 Tricorder Router
 description: Route any Assist request containing tricorder to Computer Science
 triggers:
@@ -30,8 +31,8 @@ actions:
                 {{ thermal_reply.report | default('No thermal analysis was returned.', true) }}
           - set_conversation_response: |
               {{ thermal_reply.report | default('No thermal analysis was returned.', true) }}
-      # General diagnostic now also includes thermal image interpretation.
-      # Audio analysis is not yet implemented: never infer sound identities.
+      # General diagnostic includes sensor, thermal-image and real WAV findings.
+      # Preserve the existing diagnostic phrases and all default routing.
       - conditions:
           - condition: template
             value_template: |
@@ -45,10 +46,14 @@ actions:
           - action: script.tr_460_science_diagnostic
             data: {}
             response_variable: science_reply
-          # Thermal is optional; an absent archive must not break diagnostics.
+          # Either optional analyzer can fail without breaking basic diagnostics.
           - action: script.analyze_tricorder_thermal_image
             data: {}
             response_variable: thermal_reply
+            continue_on_error: true
+          - action: script.analyze_tricorder_audio_recordings
+            data: {}
+            response_variable: audio_reply
             continue_on_error: true
           - variables:
               science_summary: "{{ science_reply.response.speech.plain.speech }}"
@@ -59,28 +64,40 @@ actions:
                 {% else %}
                   Detailed thermal image interpretation is unavailable.
                 {% endif %}
-          # Summarize text returned by both existing scripts; do not reprocess
-          # raw audio, claim sound recognition, or speculate about identity.
+              audio_summary: >-
+                {% if audio_reply is defined and audio_reply is mapping
+                      and (audio_reply.status | default('error')) in ['ok', 'partial'] %}
+                  {{ audio_reply.report | default('No recording descriptions were returned.', true) }}
+                {% elif audio_reply is defined and audio_reply is mapping
+                        and (audio_reply.status | default('error')) == 'no_audio' %}
+                  No completed WAV recordings exist for this mission.
+                {% else %}
+                  Analysis of the actual WAV recordings is unavailable.
+                {% endif %}
+          # Summarize only findings supplied by the three services; do not
+          # treat numeric acoustic readings as recorded sound identification.
           - action: ai_task.generate_data
             data:
               task_name: TR-460 Concise Combined Diagnostic
               instructions: >-
-                Turn the following general TR-460 measurements and separate
-                thermal image interpretation into ONE natural spoken report
-                of at most 100 words. Give the most useful overall findings
-                rather than reciting all numeric values; include at most two
-                important figures. Mention the thermal pattern and any shape
-                resemblance already supported by its image interpretation.
-                Phrase shape suggestions cautiously, e.g. "may resemble a
-                hand"; do not assert an object or organism was identified.
-                If images were unavailable, do not pretend they were seen.
-                Audio recognition/analysis has NOT been implemented: if
-                acoustic measurements are mentioned, describe only measured
-                activity, never a sound type or source. Preserve significant
-                anomalies and uncertainty; do not invent missing results.
-                Use plain spoken English, no markdown. General diagnostic:
-                {{ science_summary | to_json }}. Thermal image result:
-                {{ thermal_summary | to_json }}.
+                Combine the general TR-460 diagnostic, thermal image findings,
+                and actual WAV recording interpretation into ONE natural
+                spoken report of at most 100 words. Prioritize noteworthy
+                findings over lists of numbers; mention at most two important
+                figures. Briefly mention the thermal pattern and what its
+                outline might resemble when supported; qualify object guesses
+                (e.g. "may resemble a hand"), never assert identification.
+                Describe the sounds actually reported from WAV playback when
+                available, e.g. "a voice speaking" or "faint tapping";
+                distinguish observed sounds from uncertain source suggestions.
+                If WAV analysis is absent, do NOT identify sounds using
+                decibel measurements alone. Never imply a recording or image
+                was examined when unavailable. Preserve significant anomalies,
+                uncertainties and any unexamined recording counts; do not
+                invent results. Use plain spoken English, no markdown.
+                General diagnostic: {{ science_summary | to_json }}.
+                Thermal image interpretation: {{ thermal_summary | to_json }}.
+                Actual WAV audio interpretation: {{ audio_summary | to_json }}.
             response_variable: combined_reply
             continue_on_error: true
           - variables:
@@ -89,7 +106,7 @@ actions:
                       and combined_reply.data is defined and combined_reply.data %}
                   {{ combined_reply.data }}
                 {% else %}
-                  {{ science_summary }} {{ thermal_summary }}
+                  {{ science_summary }} {{ thermal_summary }} {{ audio_summary }}
                 {% endif %}
           - action: persistent_notification.create
             data:
