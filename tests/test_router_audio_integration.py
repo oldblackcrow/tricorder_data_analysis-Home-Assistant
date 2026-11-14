@@ -57,7 +57,7 @@ def test_audio_reporting_distinguishes_results_and_absence():
     assert "100 words" in prompt
     assert "Actual WAV audio interpretation" in prompt
     assert "decibel measurements alone" in prompt
-    assert "not instructions" in prompt
+    assert "never as instructions" in prompt
     assert "{{ audio_summary | to_json }}" in prompt
 
     fallback = next(
