@@ -198,8 +198,11 @@ def interpret(data, api_key):
     payload = {
         "model": MODEL,
         "store": False,
-        # Audio in, TEXT out: no unnecessary synthesized audio or audio charges.
-        "modalities": ["text"],
+        # The audio model's documented audio-input pattern requests audio
+        # plus text, then returns a spoken-response transcript. We discard
+        # generated audio and retain only the short text description.
+        "modalities": ["text", "audio"],
+        "audio": {"voice": "alloy", "format": "wav"},
         "max_completion_tokens": 300,
         "messages": [
             {"role": "system", "content": INSTRUCTIONS},
@@ -234,8 +237,11 @@ def interpret(data, api_key):
         if choice.get("finish_reason") == "length":
             raise ValueError("OpenAI stopped before completing a description")
         message = choice["message"]
-        answer = message.get("content") or (
-            message.get("audio") or {}).get("transcript")
+        # Audio+text replies carry the spoken text in audio.transcript.
+        # Prefer that over message.content, which can contain status text.
+        audio = message.get("audio")
+        transcript = audio.get("transcript") if isinstance(audio, dict) else None
+        answer = transcript or message.get("content")
         return validate_description(answer)
     except (KeyError, IndexError, TypeError, AttributeError):
         raise ValueError("Unexpected OpenAI response shape") from None
