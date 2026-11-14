@@ -1,11 +1,12 @@
-# TR-460 WAV sound interpretation (separate initial test)
+# TR-460 WAV sound interpretation and general diagnostic integration
 
-**Status:** Committed implementation only. NOT installed or tested against
-your live Home Assistant instance or a live OpenAI API call.
+**Status:** Standalone audio analysis was successfully tested with a real 10-second
+mission WAV recording: it returned a natural-language description that the
+user confirmed matched the recording. The updated general diagnostic router
+is committed on GitHub but has NOT yet been installed or tested in Home Assistant.
 
-The existing Audio card and WAV-transfer mechanism stay unchanged.
-This is a new, separate script. It is not yet included in general
-diagnostic voice reports; that integration comes after an end-to-end test.
+The existing Audio card, WAV-transfer mechanism, and standalone scripts stay
+unchanged. The router adds WAV findings to a concise general diagnostic.
 
 ## What it reads
 
@@ -15,7 +16,7 @@ diagnostic voice reports; that integration comes after an end-to-end test.
   /config/tricorder/tricorder_uploads.jsonl archive.
 - Only WAVs restored under /media/tricorder_audio/, with matching
   /config/tricorder/recordings/audio_XXXXXXXX.json sidecars.
-- 8 kHz mono 16-bit PCM WAVs up to 45 seconds (the normal timed scans).
+- Mono 16-bit PCM WAVs up to 45 seconds (the normal timed scans).
   Nothing reads the microphone live; Captain's Logs are different.
 
 The OpenAI gpt-audio-1.5 Chat Completions API receives the actual WAV,
@@ -49,7 +50,12 @@ Official API: https://developers.openai.com/api/docs/guides/audio-chat-completio
    It obtains the selected mission automatically.
 6. Select a mission with playable WAVs, then run the script manually and
    inspect the newest trace's audio_result response (status/report/errors).
-   Do NOT expose or integrate it into the general diagnostic yet.
+7. Once this succeeds, replace ONLY the existing TR-460 Tricorder Router
+   automation's YAML with
+   [the combined router](../setup/tricorder_router_thermal.yaml).
+   Do not create a duplicate router. This reuses both standalone analyzers
+   and speaks one short report, including sensor, thermal, and recorded WAV
+   interpretations. Test a general diagnostic and inspect the router trace.
 
 ## Caching, costs and duration
 
@@ -72,9 +78,9 @@ Official API: https://developers.openai.com/api/docs/guides/audio-chat-completio
 
 - The analyzer can suggest what a sound resembles but cannot guarantee
   an animal, species, machine, or human identity from short WAV audio.
-- It currently does NOT compare missions, process Captain's Logs, or add
-  its findings to the general Tricorder diagnostic. Those come after
-  the standalone test succeeds.
+- It currently does NOT compare audio across missions or process Captain's
+  Logs. The separate general router includes audio findings after the updated
+  router YAML is installed; this integration is not yet live-tested.
 - Each API request has a 22-second timeout; slow calls may fail and can
   motivate asynchronous processing later.
 - No dashboard, archived WAV, webhook or device firmware is altered.
@@ -82,5 +88,6 @@ Official API: https://developers.openai.com/api/docs/guides/audio-chat-completio
 ## Verification
 
 Offline tests in tests/test_audio_ai.py mock the API, so they incur no
-charges. Tests alone cannot establish the live model permissions, API-key
-access, or Home Assistant behavior. A live manual test remains required.
+charges; tests/test_router_audio_integration.py checks the router branches.
+A real standalone audio request was confirmed successful with the user's
+recording. The combined voice diagnostic still needs a manual test.
