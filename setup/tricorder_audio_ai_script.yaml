@@ -1,0 +1,28 @@
+# Replace or create ONLY this standalone Audio Analysis script.
+# Do NOT merge into the general Tricorder diagnostic until tested.
+alias: Analyze Tricorder Audio Recordings
+description: >-
+  Listen to actual WAV recordings in the currently selected TR-460 mission.
+  Describe possible footsteps, voices, birds, machinery, or other sounds
+  cautiously, rather than interpreting decibel numbers.
+mode: single
+sequence:
+  - action: shell_command.tricorder_analyze_audio
+    data:
+      mission_id: "{{ states('input_text.tric_archive_mission_id') }}"
+    response_variable: audio_command
+  - if:
+      - condition: template
+        value_template: "{{ audio_command.returncode != 0 }}"
+    then:
+      - variables:
+          audio_result:
+            status: error
+            report: >-
+              Audio analysis failed to start. Review the Home Assistant script trace.
+      - stop: WAV analysis command failed
+        response_variable: audio_result
+  - variables:
+      audio_result: "{{ audio_command.stdout | from_json }}"
+  - stop: WAV analysis finished
+    response_variable: audio_result
