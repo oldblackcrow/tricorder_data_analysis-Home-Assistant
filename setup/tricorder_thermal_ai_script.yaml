@@ -80,19 +80,25 @@ sequence:
         Comparison mission statistics: {{ report.comparisons | to_json }}.
         Attached images are in this exact order, with mission and timestamp:
         {{ report.attachment_index | to_json }}.
-        First briefly describe each distinct visible thermal pattern in the
-        attached selected-mission images; then summarize changes across scans.
-        Report the selected mission's actual mean, minimum and maximum
-        temperatures in Celsius and Fahrenheit using the provided numbers.
-        Average the measurement values, not the image colors. Hot spots
-        must not be hidden just because the overall mean is lower.
+        Give a concise interpretation of the dominant visible thermal shapes
+        in the selected-mission images, and important changes across scans.
+        If a visible outline genuinely supports it, you may cautiously
+        describe what the shape resembles, such as "a hand-shaped warm region"
+        or "a shape that may resemble a small animal". Describe resemblance,
+        NEVER identify the object or claim it is human, animal, or alive.
+        If the images are too indistinct, say no shape can be suggested.
+        Report the mission's actual mean, minimum and maximum temperatures in
+        Celsius and Fahrenheit in at most one brief sentence. Average the
+        original measurement values, not false-color image colors. Do not
+        overlook significant hot spots because the overall mean is lower.
         If comparison statistics are supplied, compare mission measurements;
         only compare visual appearances for comparison images actually attached.
         If none are supplied, do not invent comparison results.
         If {{ report.unattached_images }} images were not attached, disclose
         that those images contributed numerical measurements only.
-        Never guess object identity, materials, diagnosis, or calibration.
-        Respond in plain spoken English, no markdown, 140 words or fewer.
+        Never infer materials, medical diagnoses, sound identities, or sensor
+        calibration. Be candid about uncertainty and visual resolution.
+        Respond in plain spoken English, no markdown, 100 words or fewer.
       attachments: "{{ report.attachments }}"
     response_variable: interpreted
   - variables:
