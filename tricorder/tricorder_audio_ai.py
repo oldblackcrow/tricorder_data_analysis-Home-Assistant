@@ -170,10 +170,15 @@ def validate_description(value):
         raise ValueError("OpenAI returned no sound description")
     answer = value.strip()
     try:
-        decoded = json.loads(answer)
+        json.loads(answer)
     except (ValueError, TypeError):
-        decoded = None
-    if decoded is not None or answer.startswith(("{", "[")):
+        pass
+    else:
+        raise ValueError(
+            "OpenAI returned structured/status data instead of a sound "
+            "description; response was not cached"
+        )
+    if answer.startswith(("{", "[")):
         raise ValueError(
             "OpenAI returned structured/status data instead of a sound "
             "description; response was not cached"
