@@ -1,0 +1,8 @@
+# Merge the single command below into your existing shell_command:
+# section of /config/configuration.yaml; do not duplicate the heading.
+# The OpenAI key is read from a separate local file by the Python helper,
+# never from YAML or GitHub.
+shell_command:
+  tricorder_analyze_audio: >-
+    python3 /config/tricorder/tricorder_audio_ai.py
+    "{{ mission_id | regex_replace('[^A-Za-z0-9_.-]', '') }}"
